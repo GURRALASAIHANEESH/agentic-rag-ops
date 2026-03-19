@@ -1,0 +1,35 @@
+Attention Is All You Need — Overview
+
+The Transformer architecture, introduced in the paper "Attention Is All You Need"
+by Vaswani et al. (2017), revolutionized the field of natural language processing
+by replacing recurrent neural networks with a mechanism called self-attention.
+
+Self-Attention Mechanism:
+Self-attention allows each position in a sequence to attend to all other positions
+in the same sequence. For each token, three vectors are computed: a Query (Q),
+a Key (K), and a Value (V). The attention score is computed as the dot product of
+Q and K, scaled by the square root of the key dimension, then passed through a
+softmax function. The output is a weighted sum of the Value vectors.
+
+Formula: Attention(Q, K, V) = softmax(QK^T / sqrt(d_k)) * V
+
+Multi-Head Attention:
+Rather than applying attention once, the Transformer applies it h times in
+parallel with different learned projections. This allows the model to jointly
+attend to information from different representation subspaces at different
+positions. The outputs are concatenated and projected to produce the final values.
+
+Positional Encoding:
+Since the Transformer contains no recurrence, positional encodings are added to
+the input embeddings to inject information about token order. These use sine and
+cosine functions of different frequencies.
+
+The Transformer Encoder-Decoder:
+The encoder maps input sequences to continuous representations. The decoder
+generates the output sequence one token at a time, attending to both the
+encoder output and previously generated tokens using masked self-attention.
+
+Impact:
+The Transformer became the foundation for models like BERT, GPT, T5, and LLaMA.
+It enabled transfer learning at scale and is the dominant architecture in modern
+NLP and multimodal AI systems.

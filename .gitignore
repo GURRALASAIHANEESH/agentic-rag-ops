@@ -1,0 +1,53 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.venv/
+venv/
+*.egg-info/
+dist/
+build/
+.pytest_cache/
+*.pyc
+
+# Environment files
+.env
+backend/.env
+frontend/.env
+.env.local
+.env.production
+
+# Uploads (user data - never commit)
+backend/uploads/
+
+# Debug/temp scripts
+backend/body.json
+body.json
+backend/check_*.py
+backend/debug_*.py
+backend/test_ingestion.py
+
+# Node
+frontend/node_modules/
+frontend/.next/
+frontend/tsconfig.tsbuildinfo
+
+# Database
+*.sqlite
+*.db
+
+# Logs
+*.log
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Terraform state
+infra/terraform/*.tfstate
+infra/terraform/*.tfstate.backup
+infra/terraform/.terraform/
+
+# FAISS index (runtime artifact)
+backend/faiss_index*
+backend/faiss_store/

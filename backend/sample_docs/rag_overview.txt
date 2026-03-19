@@ -1,0 +1,38 @@
+Retrieval-Augmented Generation (RAG) — Overview
+
+Retrieval-Augmented Generation (RAG) is a technique that enhances large language
+model (LLM) outputs by grounding them in retrieved external knowledge. Introduced
+by Lewis et al. (2020) from Facebook AI Research, RAG combines a retrieval
+component with a generative component to reduce hallucinations and improve
+factual accuracy.
+
+The Core Problem RAG Solves:
+LLMs are trained on static datasets with a knowledge cutoff. They cannot access
+real-time information and often hallucinate facts not in their training data.
+RAG addresses this by retrieving relevant documents at inference time and
+conditioning the LLM's generation on that retrieved context.
+
+RAG Pipeline:
+1. Indexing: Documents are chunked, embedded into vectors, and stored in a
+   vector database (e.g., FAISS, pgvector, Pinecone).
+2. Retrieval: At query time, the user's question is embedded and used to
+   retrieve the most semantically similar document chunks via nearest neighbor search.
+3. Augmentation: The retrieved chunks are concatenated with the user query
+   to form a prompt.
+4. Generation: The LLM generates an answer conditioned on the augmented prompt.
+
+Agentic RAG:
+Standard RAG is a single-pass retrieval. Agentic RAG adds a reasoning layer
+where the system can decide whether to retrieve, re-query, or verify results.
+A Router agent classifies the query, a Retriever fetches context, and a Critic
+agent verifies the generated answer against the sources.
+
+Key Metrics:
+- Faithfulness: Is the answer supported by the retrieved context?
+- Answer Relevancy: Does the answer address the question?
+- Context Precision: Are retrieved chunks relevant to the query?
+- Citation Recall: Does the answer cite all relevant sources?
+
+Applications:
+RAG is used in enterprise knowledge bases, legal research tools, medical
+information systems, and customer support automation.

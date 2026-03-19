@@ -1,0 +1,126 @@
+# ─────────────────────────────────────────────────────────────
+# Agentic RAG Ops — Production Overrides
+# Usage: docker-compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+#
+# Differences from dev:
+#   - No source code volume mounts (immutable images)
+#   - Resource limits on all services
+#   - Stricter restart policies
+#   - SSL termination note (handled by Nginx/Caddy in front)
+#   - Secrets via environment (inject from CI/CD secrets)
+#   - Grafana + Prometheus not exposed publicly
+# ─────────────────────────────────────────────────────────────
+
+version: "3.9"
+
+services:
+
+  postgres:
+    restart: always
+    # In production: consider managed Postgres (Supabase free tier, Neon, Railway)
+    # to offload backup and HA concerns.
+    environment:
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD} # must be set — no default
+    deploy:
+      resources:
+        limits:
+          memory: 512m
+          cpus: "0.5"
+
+  backend:
+    restart: always
+    # Remove dev volume mounts — use the built image as-is
+    volumes:
+      - uploads_data:/app/uploads
+      - huggingface_cache:/app/.cache/huggingface
+    environment:
+      ENVIRONMENT: production
+      DEBUG: "false"
+      LOG_FORMAT: json # structured JSON for log aggregation
+
+      # Production JWT secret — inject from CI/CD secrets, never hardcode
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY}
+
+      # In production, prefer Groq (free tier) or OpenAI over local llama.cpp
+      LLM_PROVIDER: ${LLM_PROVIDER:-groq}
+      GROQ_API_KEY: ${GROQ_API_KEY}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+
+      # Tighter rate limits in production
+      RATE_LIMIT_REQUESTS: 20
+      RATE_LIMIT_WINDOW_SECONDS: 60
+
+    deploy:
+      resources:
+        limits:
+          memory: 2g # embedding model needs ~500MB; rest for app
+          cpus: "1.0"
+      replicas: 1 # scale to 2+ behind a load balancer if needed
+
+    # Don't expose backend directly — let Nginx proxy it
+    ports: []
+    expose:
+      - "8000"
+
+  frontend:
+    restart: always
+    volumes: [] # no source mounts in production
+    environment:
+      NODE_ENV: production
+      # In production, API calls go through the same domain via Nginx proxy
+      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL}
+    deploy:
+      resources:
+        limits:
+          memory: 512m
+          cpus: "0.5"
+    ports: []
+    expose:
+      - "3000"
+
+  # ── Nginx reverse proxy ────────────────────────────────────────────────────
+  # Handles SSL termination, routing, and static file serving.
+  # Uses Caddy as a simpler alternative — auto-provisions Let's Encrypt certs.
+  nginx:
+    image: caddy:2.7-alpine
+    container_name: ragops_caddy
+    restart: always
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./infra/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    networks:
+      - ragops_net
+    depends_on:
+      - backend
+      - frontend
+
+  prometheus:
+    # Not exposed externally in production
+    ports: []
+    expose:
+      - "9090"
+    deploy:
+      resources:
+        limits:
+          memory: 256m
+
+  grafana:
+    # Not exposed externally — access via SSH tunnel or VPN
+    ports: []
+    expose:
+      - "3000"
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: ${GF_SECURITY_ADMIN_PASSWORD}
+      GF_SERVER_ROOT_URL: "%(protocol)s://%(domain)s/grafana/"
+    deploy:
+      resources:
+        limits:
+          memory: 256m
+
+volumes:
+  caddy_data:
+  caddy_config:

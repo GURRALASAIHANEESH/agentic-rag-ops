@@ -1,0 +1,38 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: ragops-ingress
+  annotations:
+    nginx.ingress.kubernetes.io/rewrite-target: /
+    cert-manager.io/cluster-issuer: "letsencrypt-prod"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "300"   # for SSE streaming
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "300"
+    nginx.ingress.kubernetes.io/proxy-buffering: "off"       # required for SSE
+spec:
+  ingressClassName: nginx
+  tls:
+    - hosts:
+        - ragops.yourdomain.com
+        - api.ragops.yourdomain.com
+      secretName: ragops-tls
+  rules:
+    - host: ragops.yourdomain.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: ragops-frontend-svc
+                port:
+                  number: 3000
+    - host: api.ragops.yourdomain.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: ragops-backend-svc
+                port:
+                  number: 8000

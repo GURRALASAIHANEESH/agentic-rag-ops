@@ -1,0 +1,45 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ragops-frontend
+  labels:
+    app: ragops-frontend
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: ragops-frontend
+  template:
+    metadata:
+      labels:
+        app: ragops-frontend
+    spec:
+      containers:
+        - name: frontend
+          image: ragops-frontend:latest
+          ports:
+            - containerPort: 3000
+          env:
+            - name: NEXT_PUBLIC_API_URL
+              valueFrom:
+                configMapKeyRef:
+                  name: ragops-config
+                  key: NEXT_PUBLIC_API_URL
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "256Mi"
+            limits:
+              cpu: "500m"
+              memory: "512Mi"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ragops-frontend-svc
+spec:
+  selector:
+    app: ragops-frontend
+  ports:
+    - port: 3000
+      targetPort: 3000

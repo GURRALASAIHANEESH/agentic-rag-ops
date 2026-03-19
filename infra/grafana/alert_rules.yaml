@@ -1,0 +1,33 @@
+groups:
+  - name: ragops-alerts
+    interval: 30s
+    rules:
+      - alert: HighQueryLatency
+        expr: >
+          histogram_quantile(0.99,
+            rate(ragops_query_duration_seconds_bucket[5m])) > 2
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "p99 query latency > 2s"
+          description: "Sustained high latency on /query endpoint."
+
+      - alert: HighErrorRate
+        expr: >
+          (rate(ragops_query_errors_total[5m]) /
+           rate(ragops_query_total[5m])) > 0.05
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Error rate > 5%"
+          description: "More than 5% of queries are returning errors."
+
+      - alert: BackendDown
+        expr: up{job="ragops-backend"} == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "RAG Ops backend is down"

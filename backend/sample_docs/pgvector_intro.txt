@@ -1,0 +1,45 @@
+pgvector: Vector Similarity Search for PostgreSQL — Overview
+
+pgvector is an open-source PostgreSQL extension that adds vector similarity
+search capabilities to Postgres. It allows storing and querying high-dimensional
+vector embeddings directly in a relational database.
+
+Installation:
+pgvector is available as a Docker image: pgvector/pgvector:pg16
+It can also be installed manually: CREATE EXTENSION vector;
+
+Vector Column Type:
+Vectors are stored using the vector(n) column type where n is the dimension.
+Example: embedding vector(384) stores 384-dimensional embeddings.
+Vectors are stored as arrays of 4-byte floats.
+
+Distance Operators:
+- <->  : L2 (Euclidean) distance
+- <#>  : Negative inner product
+- <=>  : Cosine distance (1 - cosine similarity)
+
+Example Query:
+SELECT id, content, 1 - (embedding <=> '[0.1, 0.2, ...]'::vector) AS similarity
+FROM chunks
+ORDER BY embedding <=> '[0.1, 0.2, ...]'::vector
+LIMIT 5;
+
+Indexing:
+Two index types are supported:
+- IVFFlat: Approximate search. Faster at scale. Requires ANALYZE after creation.
+  CREATE INDEX ON chunks USING ivfflat (embedding vector_cosine_ops) WITH (lists=100);
+- HNSW: Available from pgvector 0.5.0. Better recall than IVFFlat with similar
+  speed. Higher memory usage.
+  CREATE INDEX ON chunks USING hnsw (embedding vector_cosine_ops);
+
+Advantages over standalone vector DBs:
+- No separate service to manage — vectors live in the same Postgres instance
+- Full SQL capabilities: JOIN, WHERE, GROUP BY work alongside vector search
+- ACID transactions: vector upserts are atomic with metadata updates
+- Row-level security: tenant isolation is enforced at the DB level
+- Free and open-source — no paid tier required
+
+Limitations:
+- Maximum vector dimension: 16,000
+- Not optimized for billion-scale vectors (use dedicated vector DB for that)
+- IVFFlat index requires at least a few hundred vectors for good performance

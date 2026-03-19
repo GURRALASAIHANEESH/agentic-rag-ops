@@ -1,0 +1,33 @@
+LLaMA 2: Open Foundation and Fine-Tuned Chat Models — Overview
+
+LLaMA 2 is a collection of pretrained and fine-tuned large language models
+released by Meta AI in July 2023. It was made available for research and
+commercial use. Model sizes range from 7B to 70B parameters.
+
+Pretraining:
+LLaMA 2 was trained on 2 trillion tokens from publicly available data sources.
+The context length was extended from LLaMA 1's 2048 tokens to 4096 tokens.
+Grouped-query attention (GQA) was introduced in the 34B and 70B models to
+improve inference efficiency by reducing the memory footprint of key-value caches.
+
+Fine-Tuning with RLHF:
+LLaMA 2-Chat models were fine-tuned using Supervised Fine-Tuning (SFT) followed
+by Reinforcement Learning from Human Feedback (RLHF). Two reward models were
+trained: one for helpfulness and one for safety. The Ghost Attention (GAtt)
+technique was introduced to improve multi-turn consistency.
+
+Safety:
+Meta conducted extensive red-teaming and safety evaluations. The models include
+system prompts for safety and were evaluated on benchmarks including TruthfulQA,
+ToxiGen, and BOLD.
+
+Quantization for Local Deployment:
+LLaMA 2 models can be quantized to 4-bit precision using GGUF format with
+llama.cpp. A quantized 7B model (Q4_K_M) requires approximately 4GB of RAM
+and can run on consumer hardware without a GPU. This makes it suitable for
+local RAG deployments on developer laptops.
+
+Performance:
+On most benchmarks, LLaMA 2 70B is competitive with GPT-3.5. The 7B model
+is the recommended default for local RAG systems due to its balance of quality
+and resource consumption.

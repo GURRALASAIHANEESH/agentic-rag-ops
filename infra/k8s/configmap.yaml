@@ -1,0 +1,10 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: ragops-config
+data:
+  DATABASE_URL: "postgresql+asyncpg://ragops:$(POSTGRES_PASSWORD)@ragops-postgres:5432/ragops_db"
+  NEXT_PUBLIC_API_URL: "https://api.ragops.yourdomain.com"
+  LLM_PROVIDER: "groq"
+  PROMETHEUS_PORT: "9090"
+  LOG_LEVEL: "INFO"

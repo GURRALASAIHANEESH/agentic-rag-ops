@@ -1,0 +1,53 @@
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: ragops-postgres
+spec:
+  serviceName: ragops-postgres
+  replicas: 1
+  selector:
+    matchLabels:
+      app: ragops-postgres
+  template:
+    metadata:
+      labels:
+        app: ragops-postgres
+    spec:
+      containers:
+        - name: postgres
+          image: pgvector/pgvector:pg16
+          ports:
+            - containerPort: 5432
+          env:
+            - name: POSTGRES_DB
+              value: ragops_db
+            - name: POSTGRES_USER
+              value: ragops
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: ragops-secrets
+                  key: POSTGRES_PASSWORD
+          volumeMounts:
+            - name: pgdata
+              mountPath: /var/lib/postgresql/data
+  volumeClaimTemplates:
+    - metadata:
+        name: pgdata
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        resources:
+          requests:
+            storage: 20Gi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ragops-postgres
+spec:
+  selector:
+    app: ragops-postgres
+  ports:
+    - port: 5432
+      targetPort: 5432
+  clusterIP: None

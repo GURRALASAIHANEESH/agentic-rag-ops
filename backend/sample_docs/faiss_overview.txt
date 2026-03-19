@@ -1,0 +1,37 @@
+FAISS: Facebook AI Similarity Search — Overview
+
+FAISS (Facebook AI Similarity Search) is a library developed by Meta AI Research
+for efficient similarity search and clustering of dense vectors. It is written
+in C++ with Python bindings and supports both CPU and GPU execution.
+
+Core Problem:
+Given a large collection of high-dimensional vectors (e.g., document embeddings),
+find the K vectors most similar to a query vector. Brute-force exact search
+becomes impractical at millions of vectors, so approximate nearest neighbor (ANN)
+algorithms are used.
+
+Key Index Types:
+- IndexFlatL2: Exact search using L2 (Euclidean) distance. No training required.
+  Best for small datasets (<100K vectors) where accuracy is critical.
+- IndexFlatIP: Exact search using inner product (cosine similarity on normalized
+  vectors). Used in this RAG system for semantic similarity.
+- IndexIVFFlat: Inverted file index. Clusters vectors into Voronoi cells and
+  searches only the closest cells. Much faster than flat search at scale.
+  Requires training on representative data. nprobe controls recall vs speed.
+- IndexHNSW: Hierarchical Navigable Small World graphs. Very fast ANN search
+  with good recall. Higher memory usage than IVF.
+
+Usage in RAG Systems:
+FAISS is used as an in-memory fallback vector store when pgvector is unavailable.
+Documents are embedded and added to the index. At query time, the query embedding
+is compared against all stored vectors to find the most relevant chunks.
+
+Limitations:
+FAISS does not support metadata filtering natively. Filtering by workspace_id
+must be done post-search. For production multi-tenant RAG, pgvector with SQL
+filters is more appropriate. FAISS is best for single-tenant or development use.
+
+GPU Support:
+FAISS supports GPU acceleration via CUDA for very large-scale deployments.
+The faiss-gpu package replaces faiss-cpu and can process millions of vectors
+per second on a single GPU.

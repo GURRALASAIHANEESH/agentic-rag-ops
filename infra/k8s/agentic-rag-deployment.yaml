@@ -1,0 +1,56 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ragops-backend
+  labels:
+    app: ragops-backend
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: ragops-backend
+  template:
+    metadata:
+      labels:
+        app: ragops-backend
+    spec:
+      containers:
+        - name: backend
+          image: ragops-backend:latest
+          ports:
+            - containerPort: 8000
+          envFrom:
+            - configMapRef:
+                name: ragops-config
+            - secretRef:
+                name: ragops-secrets
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 10
+            periodSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 30
+            periodSeconds: 10
+          resources:
+            requests:
+              cpu: "250m"
+              memory: "512Mi"
+            limits:
+              cpu: "1000m"
+              memory: "1Gi"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ragops-backend-svc
+spec:
+  selector:
+    app: ragops-backend
+  ports:
+    - port: 8000
+      targetPort: 8000

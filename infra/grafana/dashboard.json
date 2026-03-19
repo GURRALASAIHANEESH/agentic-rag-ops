@@ -1,0 +1,97 @@
+{
+    "title": "RAG Ops — System Overview",
+    "uid": "ragops-main",
+    "schemaVersion": 38,
+    "refresh": "10s",
+    "panels": [
+        {
+            "id": 1,
+            "type": "timeseries",
+            "title": "Query Latency p99 (ms)",
+            "gridPos": {
+                "x": 0,
+                "y": 0,
+                "w": 12,
+                "h": 8
+            },
+            "targets": [
+                {
+                    "expr": "histogram_quantile(0.99, rate(ragops_query_duration_seconds_bucket[5m])) * 1000",
+                    "legendFormat": "p99"
+                }
+            ]
+        },
+        {
+            "id": 2,
+            "type": "stat",
+            "title": "Query Throughput (req/s)",
+            "gridPos": {
+                "x": 12,
+                "y": 0,
+                "w": 6,
+                "h": 4
+            },
+            "targets": [
+                {
+                    "expr": "rate(ragops_query_total[1m])",
+                    "legendFormat": "rps"
+                }
+            ]
+        },
+        {
+            "id": 3,
+            "type": "stat",
+            "title": "Error Rate (%)",
+            "gridPos": {
+                "x": 18,
+                "y": 0,
+                "w": 6,
+                "h": 4
+            },
+            "targets": [
+                {
+                    "expr": "100 * rate(ragops_query_errors_total[5m]) / rate(ragops_query_total[5m])",
+                    "legendFormat": "err%"
+                }
+            ]
+        },
+        {
+            "id": 4,
+            "type": "timeseries",
+            "title": "Ingestion Throughput (docs/min)",
+            "gridPos": {
+                "x": 0,
+                "y": 8,
+                "w": 12,
+                "h": 8
+            },
+            "targets": [
+                {
+                    "expr": "rate(ragops_docs_ingested_total[1m]) * 60",
+                    "legendFormat": "docs/min"
+                }
+            ]
+        },
+        {
+            "id": 5,
+            "type": "timeseries",
+            "title": "Retriever Hits vs Misses",
+            "gridPos": {
+                "x": 12,
+                "y": 8,
+                "w": 12,
+                "h": 8
+            },
+            "targets": [
+                {
+                    "expr": "rate(ragops_retriever_hits_total[1m])",
+                    "legendFormat": "hits"
+                },
+                {
+                    "expr": "rate(ragops_retriever_misses_total[1m])",
+                    "legendFormat": "misses"
+                }
+            ]
+        }
+    ]
+}
