@@ -1,10 +1,11 @@
+# backend/app/services/orchestrator.py
+import json
 import time
 import uuid
 from datetime import datetime, timezone
 from typing import AsyncGenerator
 
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
 
 from app.core.config import get_settings
 from app.core.logging import get_logger
@@ -21,22 +22,26 @@ from app.metrics.prometheus import (
     track_llm_call, LLM_TOKEN_COUNT, ACTIVE_QUERIES
 )
 
-settings = get_settings()
 logger = get_logger(__name__)
 
-
 # ── RAG system prompt ─────────────────────────────────────────────────────────
-RAG_SYSTEM_PROMPT = """You are a precise research assistant with access to a
-curated knowledge base. Answer the user's question using ONLY the provided
-source context. Follow these rules:
+RAG_SYSTEM_PROMPT = """You are a precise, helpful research assistant answering
+questions from a personal knowledge base of documents.
 
-1. Cite sources using [SOURCE N] notation inline, e.g. "Transformers use
-   self-attention [SOURCE 1]."
-2. If the context does not contain enough information, say:
-   "I could not find sufficient information in the provided sources."
-3. Never fabricate facts not present in the sources.
-4. Be concise and factual. Avoid filler phrases.
-5. Structure longer answers with short paragraphs.
+RULES:
+1. Answer using ONLY the provided source context — never fabricate facts.
+2. Cite every fact inline using [SOURCE N] notation immediately after the claim.
+   Example: "Sai Haneesh studied at Malla Reddy Engineering College [SOURCE 1]."
+3. Sources may be prefixed with a section label like "Education:", "PROJECTS:",
+   "SKILLS:" — treat the content after the colon as the actual information.
+4. Answer directly and confidently when the answer exists in ANY source,
+   even if the source chunk is partial or the similarity score is low.
+5. Only say "I could not find this information in the provided sources." when
+   the answer is genuinely absent from ALL sources — not when it is present
+   but phrased differently.
+6. For simple factual questions (names, dates, places), give a one-sentence
+   direct answer first, then cite. Do not over-qualify.
+7. Be concise. No filler phrases like "Based on the context provided..."
 """
 
 
@@ -45,12 +50,12 @@ class Orchestrator:
     Stateful agent workflow controller.
 
     Pipeline (in order):
-      Step 1 — Router     : Decide if query is answerable or needs clarification
-      Step 2 — Retrieval  : Semantic search → top-K chunks
-      Step 3 — Prompt     : Build context-injected prompt with [SOURCE N] labels
-      Step 4 — LLM        : Stream tokens to client in real-time
-      Step 5 — Critic     : Verify claims against sources, build confidence map
-      Step 6 — Persist    : Save QueryLog + Citations + AuditLogs to DB
+      Step 1 — Router    : Decide if query is answerable or needs clarification
+      Step 2 — Retrieval : Semantic search → top-K chunks
+      Step 3 — Prompt    : Build context-injected prompt with [SOURCE N] labels
+      Step 4 — LLM       : Stream tokens to client in real-time
+      Step 5 — Critic    : Verify claims against sources, build confidence map
+      Step 6 — Persist   : Save QueryLog + Citations + AuditLogs to DB
 
     Every step is logged to audit_logs so the full decision trail is queryable.
     """
@@ -72,13 +77,11 @@ class Orchestrator:
         Yields Server-Sent Events (SSE) formatted strings.
 
         SSE format:
-            data: {"type": "token", "data": "Hello"}\n\n
-            data: {"type": "citations", "data": [...]}\n\n
-            data: {"type": "critic", "data": {...}}\n\n
-            data: {"type": "done", "query_log_id": "uuid"}\n\n
+          data: {"type": "token",     "data": "Hello"}\n\n
+          data: {"type": "citations", "data": [...]}\n\n
+          data: {"type": "critic",    "data": {...}}\n\n
+          data: {"type": "done",      "query_log_id": "uuid"}\n\n
         """
-        import json
-
         start_time = time.monotonic()
         ACTIVE_QUERIES.inc()
 
@@ -98,7 +101,7 @@ class Orchestrator:
             model_used=self._llm.model_name,
         )
         self._db.add(query_log)
-        await self._db.flush()   # get ID without full commit
+        await self._db.flush()  # get ID without full commit
 
         try:
             # ── Step 1: Router ────────────────────────────────────────────
@@ -156,7 +159,6 @@ class Orchestrator:
 
             full_answer = "".join(full_answer_parts)
 
-            # Approximate token count for metrics (1 token ≈ 4 chars)
             estimated_tokens = len(full_answer) // 4
             LLM_TOKEN_COUNT.labels(
                 provider=self._llm.provider_name,
@@ -184,34 +186,29 @@ class Orchestrator:
             query_log.latency_ms = latency_ms
             query_log.critic_score = critic_report.overall_score
 
-            # Persist Citation rows for provenance history
             for citation in citations:
-                db_citation = Citation(
+                self._db.add(Citation(
                     query_log_id=query_log.id,
                     chunk_id=citation.chunk_id,
                     similarity=citation.similarity,
                     snippet=citation.snippet,
-                )
-                self._db.add(db_citation)
+                ))
 
-            # Final LLM call audit entry
             self._db.add(AuditLog(
                 query_log_id=query_log.id,
                 user_id=user_id,
                 event_type="llm_call",
                 payload={
-                    "model": self._llm.model_name,
-                    "provider": self._llm.provider_name,
-                    "prompt_chars": len(prompt),
-                    "answer_chars": len(full_answer),
-                    "latency_ms": latency_ms,
+                    "model":            self._llm.model_name,
+                    "provider":         self._llm.provider_name,
+                    "prompt_chars":     len(prompt),
+                    "answer_chars":     len(full_answer),
+                    "latency_ms":       latency_ms,
                     "estimated_tokens": estimated_tokens,
                 },
             ))
 
             await self._db.commit()
-
-            # ── Done ──────────────────────────────────────────────────────
             yield self._sse_event("done", None, query_log_id=str(query_log.id))
 
             logger.info(
@@ -239,19 +236,15 @@ class Orchestrator:
         user_id: uuid.UUID,
     ) -> QueryResponse:
         """
-        Non-streaming version — collects all SSE events internally
-        and returns a single QueryResponse object.
-        Used for testing and non-streaming API clients.
+        Non-streaming version — collects all SSE events and returns
+        a single QueryResponse. Used for testing and non-streaming clients.
         """
-        import json
-
         tokens = []
         citations = []
         critic = None
         query_log_id = None
 
         async for event in self.run_streaming(request, user_id):
-            # Parse SSE line: "data: {...}\n\n"
             if not event.startswith("data:"):
                 continue
             raw = event[5:].strip()
@@ -291,15 +284,20 @@ class Orchestrator:
 
     def _build_rag_prompt(self, query: str, context_block: str) -> str:
         """
-        Builds the full RAG prompt with context injection.
-        Context block uses [SOURCE N] labels so the LLM can cite inline.
+        Builds the RAG prompt with context injection.
+
+        Structure:
+          - CONTEXT block with [SOURCE N] labels
+          - USER QUESTION
+          - Explicit instruction to answer directly from sources
         """
         return (
             f"CONTEXT FROM KNOWLEDGE BASE:\n"
             f"{context_block}\n\n"
-            f"USER QUESTION:\n{query}\n\n"
-            f"Answer using only the context above. "
-            f"Cite sources inline using [SOURCE N] notation."
+            f"USER QUESTION: {query}\n\n"
+            f"Instructions: Answer the question directly using the context above. "
+            f"If the answer appears in any source (even partially), state it confidently "
+            f"and cite with [SOURCE N]. For simple facts, answer in one sentence."
         )
 
     def _sse_event(
@@ -310,15 +308,10 @@ class Orchestrator:
     ) -> str:
         """
         Formats a Server-Sent Event string.
-        FastAPI's StreamingResponse yields these directly to the client.
-
+        Double newline is required by the SSE spec.
         Format: "data: {json}\n\n"
-        The double newline is required by the SSE spec.
         """
-        import json
-
         payload = {"type": event_type, "data": data}
         if query_log_id:
             payload["query_log_id"] = query_log_id
-
         return f"data: {json.dumps(payload)}\n\n"

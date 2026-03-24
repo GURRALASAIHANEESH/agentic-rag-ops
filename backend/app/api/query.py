@@ -16,7 +16,6 @@ from app.schemas.query import QueryRequest, QueryResponse
 from app.services.orchestrator import Orchestrator
 
 router = APIRouter()
-settings = get_settings()
 logger = get_logger(__name__)
 limiter = Limiter(key_func=get_remote_address)
 
@@ -29,7 +28,7 @@ limiter = Limiter(key_func=get_remote_address)
     response_description="Server-Sent Events stream of tokens + citations + critic",
 )
 @limiter.limit(
-    f"{settings.RATE_LIMIT_REQUESTS}/{settings.RATE_LIMIT_WINDOW_SECONDS}seconds"
+    f"{get_settings().RATE_LIMIT_REQUESTS}/{get_settings().RATE_LIMIT_WINDOW_SECONDS}seconds"
 )
 async def query(
     request: Request,                   # required by slowapi rate limiter
@@ -126,7 +125,7 @@ async def _event_stream(
     summary="Submit a query and receive a single JSON response (non-streaming)",
 )
 @limiter.limit(
-    f"{settings.RATE_LIMIT_REQUESTS}/{settings.RATE_LIMIT_WINDOW_SECONDS}seconds"
+    f"{get_settings().RATE_LIMIT_REQUESTS}/{get_settings().RATE_LIMIT_WINDOW_SECONDS}seconds"
 )
 async def query_sync(
     request: Request,

@@ -19,7 +19,7 @@ pgvector==0.2.5                # pgvector SQLAlchemy type
 # ── Auth & Security ───────────────────────────────────────────
 python-jose[cryptography]==3.3.0   # JWT encode/decode
 passlib[bcrypt]==1.7.4             # password hashing
-bcrypt==4.1.3
+bcrypt==4.0.1
 
 # ── Settings ──────────────────────────────────────────────────
 pydantic==2.7.1

@@ -20,7 +20,6 @@ from app.api.documents import router as documents_router
 from app.api.query import router as query_router
 from app.api.retrieval import router as retrieval_router
 
-settings = get_settings()
 logger = get_logger(__name__)
 
 
@@ -35,7 +34,14 @@ limiter = Limiter(key_func=get_remote_address)
 async def lifespan(app: FastAPI):
     # ── Startup ──────────────────────────────────────────────────────────
     configure_logging()
-    logger.info("starting_up", app=settings.APP_NAME, env=settings.ENVIRONMENT)
+    logger.info("starting_up", app=get_settings().APP_NAME, env=get_settings().ENVIRONMENT)
+
+    # Pre-warm embedding model — loads weights before first user query
+    # Eliminates the 6s cold-start penalty on the first /api/query request
+    from app.services.embedder import get_embedding_service
+    embedder = get_embedding_service()
+    await embedder.embed_text("warmup")
+    logger.info("embedding_model_ready", model=get_settings().EMBEDDING_MODEL)
 
     # Ensure pgvector extension exists
     await ensure_pgvector_extension()
@@ -43,23 +49,23 @@ async def lifespan(app: FastAPI):
 
     # Ensure upload directory exists
     import os
-    os.makedirs(settings.UPLOAD_DIR, exist_ok=True)
-    logger.info("upload_dir_ready", path=settings.UPLOAD_DIR)
+    os.makedirs(get_settings().UPLOAD_DIR, exist_ok=True)
+    logger.info("upload_dir_ready", path=get_settings().UPLOAD_DIR)
 
     yield
 
     # ── Shutdown ─────────────────────────────────────────────────────────
-    logger.info("shutting_down", app=settings.APP_NAME)
+    logger.info("shutting_down", app=get_settings().APP_NAME)
 
 
 # ── FastAPI app factory ───────────────────────────────────────────────────────
 def create_app() -> FastAPI:
     app = FastAPI(
-        title=settings.APP_NAME,
-        version=settings.APP_VERSION,
+        title=get_settings().APP_NAME,
+        version=get_settings().APP_VERSION,
         description="Agentic RAG platform with retrieval, critic, and provenance.",
-        docs_url="/docs" if settings.DEBUG else None,   # hide Swagger in production
-        redoc_url="/redoc" if settings.DEBUG else None,
+        docs_url="/docs" if get_settings().DEBUG else None,   # hide Swagger in production
+        redoc_url="/redoc" if get_settings().DEBUG else None,
         lifespan=lifespan,
     )
 
@@ -71,14 +77,14 @@ def create_app() -> FastAPI:
     # Tighten allowed_origins in production to your actual frontend domain
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=["http://localhost:3000"] if settings.DEBUG else ["https://yourdomain.com"],
+        allow_origins=["http://localhost:3000"] if get_settings().DEBUG else ["https://yourdomain.com"],
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],
     )
 
     # ── Prometheus metrics ────────────────────────────────────────────────
-    if settings.PROMETHEUS_ENABLED:
+    if get_settings().PROMETHEUS_ENABLED:
         Instrumentator(
             should_group_status_codes=False,
             should_ignore_untemplated=True,
@@ -124,14 +130,14 @@ def create_app() -> FastAPI:
         db_ok = await check_db_health()
         return {
             "status": "ok" if db_ok else "degraded",
-            "app": settings.APP_NAME,
-            "version": settings.APP_VERSION,
+            "app": get_settings().APP_NAME,
+            "version": get_settings().APP_VERSION,
             "database": "ok" if db_ok else "unreachable",
         }
 
     @app.get("/", include_in_schema=False)
     async def root():
-        return {"message": f"{settings.APP_NAME} is running."}
+        return {"message": f"{get_settings().APP_NAME} is running."}
 
     return app
 

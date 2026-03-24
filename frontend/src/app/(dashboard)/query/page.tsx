@@ -123,7 +123,7 @@ function NoWorkspaceBanner() {
                 Select or create a workspace from the sidebar to start querying.
             </p>
             <Button variant="primary" size="sm" asChild>
-                <a href="/dashboard/workspace">Go to workspaces</a>
+                <a href="/workspace" className="text-indigo-400 hover:text-indigo-300 underline underline-offset-2 transition-colors">Go to workspaces</a>
             </Button>
         </div>
     );

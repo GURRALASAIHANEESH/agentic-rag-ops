@@ -1,5 +1,19 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  output: "standalone",
+  reactStrictMode: true,
+  eslint: {
+    ignoreDuringBuilds: false,
+  },
+  typescript: {
+    ignoreBuildErrors: false,
+  },
+  images: {
+    remotePatterns: [],
+  },
+  async headers() {
+    return [];
+  },
   async rewrites() {
     return [
       {

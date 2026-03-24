@@ -1,0 +1,30 @@
+# Dependencies (reinstalled in Docker)
+node_modules
+.npm
+
+# Next.js build output
+.next
+out
+
+# Env files (injected at runtime via docker-compose env_file)
+.env
+.env.local
+.env.development
+.env.production
+
+# IDE
+.vscode
+.idea
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Test artifacts
+coverage/
+playwright-report/
+test-results/
+
+# Logs
+*.log
+npm-debug.log*

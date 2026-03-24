@@ -10,7 +10,6 @@ from app.services.embedder import get_embedding_service
 from app.services.vector_store import RetrievedChunk
 from app.metrics.prometheus import CRITIC_SCORE, CRITIC_VERIFIED_CLAIMS
 
-settings = get_settings()
 logger = get_logger(__name__)
 
 
@@ -75,7 +74,7 @@ class CriticAgent:
         Main verification entry point.
         Returns a CriticReport with per-claim verification status.
         """
-        if not settings.CRITIC_ENABLED or not raw_chunks:
+        if not get_settings().CRITIC_ENABLED or not raw_chunks:
             return self._empty_report(answer)
 
         # ── Build numbered source block for the prompt ────────────────────
@@ -172,7 +171,7 @@ class CriticAgent:
         This catches cases where the LLM hallucinated a verdict but the
         semantic overlap is actually strong.
         """
-        threshold = settings.CRITIC_CONFIDENCE_THRESHOLD
+        threshold = get_settings().CRITIC_CONFIDENCE_THRESHOLD
         enriched = []
 
         for claim_dict in llm_claims:

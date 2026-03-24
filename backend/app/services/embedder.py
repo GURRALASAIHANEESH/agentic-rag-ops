@@ -8,7 +8,6 @@ from sentence_transformers import SentenceTransformer
 from app.core.config import get_settings
 from app.core.logging import get_logger
 
-settings = get_settings()
 logger = get_logger(__name__)
 
 
@@ -32,9 +31,9 @@ def _load_model() -> SentenceTransformer:
       Set EMBEDDING_MODEL=all-mpnet-base-v2 (768-dim, ~420MB)
       Also update EMBEDDING_DIMENSION=768 and the vector column in migrations.
     """
-    logger.info("loading_embedding_model", model=settings.EMBEDDING_MODEL)
-    model = SentenceTransformer(settings.EMBEDDING_MODEL)
-    logger.info("embedding_model_loaded", model=settings.EMBEDDING_MODEL)
+    logger.info("loading_embedding_model", model=get_settings().EMBEDDING_MODEL)
+    model = SentenceTransformer(get_settings().EMBEDDING_MODEL)
+    logger.info("embedding_model_loaded", model=get_settings().EMBEDDING_MODEL)
     return model
 
 
@@ -50,8 +49,8 @@ class EmbeddingService:
     def __init__(self):
         # Load model eagerly at service creation time
         self._model = _load_model()
-        self._dimension = settings.EMBEDDING_DIMENSION
-        self._batch_size = settings.EMBEDDING_BATCH_SIZE
+        self._dimension = get_settings().EMBEDDING_DIMENSION
+        self._batch_size = get_settings().EMBEDDING_BATCH_SIZE
 
     @property
     def dimension(self) -> int:

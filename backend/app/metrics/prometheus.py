@@ -1,7 +1,6 @@
 from prometheus_client import Counter, Histogram, Gauge, Summary
 from app.core.config import get_settings
 
-settings = get_settings()
 
 # ── Request metrics (auto-instrumented by prometheus_fastapi_instrumentator)
 # We define custom metrics below for RAG-specific observability.

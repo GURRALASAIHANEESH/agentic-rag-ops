@@ -23,12 +23,11 @@ from app.schemas.document import (
 from app.services.ingestion import IngestionService
 
 router = APIRouter()
-settings = get_settings()
 logger = get_logger(__name__)
 
 # Allowed MIME types parsed from config string
-ALLOWED_TYPES = set(settings.ALLOWED_MIME_TYPES.split(","))
-MAX_BYTES = settings.MAX_UPLOAD_SIZE_MB * 1024 * 1024
+ALLOWED_TYPES = set(get_settings().ALLOWED_MIME_TYPES.split(","))
+MAX_BYTES = get_settings().MAX_UPLOAD_SIZE_MB * 1024 * 1024
 
 
 # ── POST /api/documents/upload ────────────────────────────────────────────────
@@ -66,14 +65,14 @@ async def upload_document(
     if len(file_bytes) > MAX_BYTES:
         raise HTTPException(
             status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
-            detail=f"File exceeds {settings.MAX_UPLOAD_SIZE_MB}MB limit.",
+            detail=f"File exceeds {get_settings().MAX_UPLOAD_SIZE_MB}MB limit.",
         )
 
     if len(file_bytes) == 0:
         raise HTTPException(status_code=400, detail="Uploaded file is empty.")
 
     # ── Save file to storage ──────────────────────────────────────────────
-    upload_dir = Path(settings.UPLOAD_DIR) / str(workspace_id)
+    upload_dir = Path(get_settings().UPLOAD_DIR) / str(workspace_id)
     upload_dir.mkdir(parents=True, exist_ok=True)
 
     safe_filename = _sanitize_filename(file.filename or "upload.pdf")
@@ -89,8 +88,8 @@ async def upload_document(
         storage_path=str(file_path),
         status="pending",
         expires_at=datetime.now(timezone.utc) + timedelta(
-            days=settings.DOCUMENT_RETENTION_DAYS
-        ) if settings.DOCUMENT_RETENTION_DAYS > 0 else None,
+            days=get_settings().DOCUMENT_RETENTION_DAYS
+        ) if get_settings().DOCUMENT_RETENTION_DAYS > 0 else None,
     )
     db.add(doc)
     await db.commit()
@@ -195,7 +194,16 @@ async def delete_document(
     document_id: uuid.UUID,
     payload: dict = Depends(get_current_user_payload),
     db: AsyncSession = Depends(get_db),
-):
+) -> None:
+    """
+    Deletes a document and ALL its chunks.
+
+    Cascade strategy (defence in depth — two layers):
+      Layer 1 — ORM: cascade="all, delete-orphan" on Document.chunks
+                with lazy="select" loads and deletes chunks via SQLAlchemy.
+      Layer 2 — DB:  ON DELETE CASCADE on chunks.document_id FK ensures
+                no orphan survives even a direct SQL DELETE or bulk operation.
+    """
     user_id = get_user_id_from_payload(payload)
     doc = await db.get(Document, document_id)
     if not doc:
@@ -205,18 +213,15 @@ async def delete_document(
     if not workspace or workspace.owner_id != user_id:
         raise HTTPException(status_code=403, detail="Access denied.")
 
-    # Delete file from disk
-    try:
-        if os.path.exists(doc.storage_path):
-            os.remove(doc.storage_path)
-    except OSError as e:
-        logger.warning("file_delete_failed", path=doc.storage_path, error=str(e))
-
-    # Cascade deletes chunks via FK constraint
+    # ORM delete — triggers cascade="all, delete-orphan" on chunks relationship
     await db.delete(doc)
     await db.commit()
 
-    logger.info("document_deleted", doc_id=str(document_id))
+    logger.info(
+        "document_deleted",
+        document_id=str(document_id),
+        user_id=str(user_id),
+    )
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
@@ -243,8 +248,8 @@ async def _run_ingestion(
     Creates its own DB session since BackgroundTasks runs outside
     the request lifecycle (original session is already closed).
     """
-    from app.core.database import AsyncSessionLocal
-    async with AsyncSessionLocal() as db:
+    from app.core.database import get_session_factory
+    async with get_session_factory()() as db:
         try:
             service = IngestionService()
             await service.ingest_document(
@@ -270,3 +275,4 @@ def _status_message(status: str) -> str:
         "failed": "Ingestion failed. Please re-upload the document.",
     }
     return messages.get(status, "Unknown status.")
+

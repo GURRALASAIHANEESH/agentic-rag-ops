@@ -1,3 +1,4 @@
+# backend/app/services/retriever.py
 import uuid
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
@@ -11,7 +12,6 @@ from app.services.embedder import get_embedding_service
 from app.services.vector_store import get_vector_store, RetrievedChunk
 from app.metrics.prometheus import track_retrieval
 
-settings = get_settings()
 logger = get_logger(__name__)
 
 
@@ -34,36 +34,41 @@ class RetrieverService:
         query: str,
         workspace_id: uuid.UUID,
         query_log_id: uuid.UUID,
-        top_k: int = None,
+        top_k: int | None = None,
+        min_similarity: float | None = None,
     ) -> tuple[list[CitationSchema], list[RetrievedChunk]]:
         """
         Main retrieval method.
 
         Returns:
-          - citations: list[CitationSchema] for the API response
-          - raw_chunks: list[RetrievedChunk] for the orchestrator (to build prompt)
+          - citations:   list[CitationSchema]  for the API response
+          - raw_chunks:  list[RetrievedChunk]  for the orchestrator prompt
 
         Steps:
-          1. Embed the query string
-          2. Vector search (pgvector or FAISS)
-          3. Enrich with document filenames
-          4. Build CitationSchema objects with snippet (≤300 chars)
-          5. Log retrieval to audit_logs
+          1. Resolve config values (single get_settings() call per request)
+          2. Embed the query string
+          3. Vector search (pgvector or FAISS)
+          4. Enrich with document filenames
+          5. Build CitationSchema objects with snippet (≤300 chars)
+          6. Log retrieval to audit_logs
         """
-        top_k = top_k or settings.RETRIEVAL_TOP_K
+        # ── 1. Resolve config once — avoids 3× get_settings() calls ──────
+        cfg = get_settings()
+        resolved_top_k = top_k if top_k is not None else cfg.RETRIEVAL_TOP_K
+        resolved_min_sim = min_similarity if min_similarity is not None else cfg.RETRIEVAL_MIN_SIMILARITY
+        backend_name = cfg.VECTOR_STORE_BACKEND
 
-        # ── 1. Embed query ────────────────────────────────────────────────
+        # ── 2. Embed query ────────────────────────────────────────────────
         query_embedding = await self._embedder.embed_text(query)
 
-        # ── 2. Vector search with metrics tracking ────────────────────────
-        backend_name = settings.VECTOR_STORE_BACKEND
+        # ── 3. Vector search with metrics tracking ────────────────────────
         with track_retrieval(backend=backend_name) as tracker:
             raw_chunks = await self._vector_store.search(
                 db=db,
                 query_embedding=query_embedding,
                 workspace_id=workspace_id,
-                top_k=top_k,
-                min_similarity=settings.RETRIEVAL_MIN_SIMILARITY,
+                top_k=resolved_top_k,
+                min_similarity=resolved_min_sim,
             )
             tracker.set_chunk_count(len(raw_chunks))
 
@@ -72,10 +77,12 @@ class RetrieverService:
                 "no_chunks_retrieved",
                 workspace=str(workspace_id),
                 query=query[:80],
+                top_k=resolved_top_k,
+                min_similarity=resolved_min_sim,
             )
             return [], []
 
-        # ── 3. Enrich: fetch filenames for retrieved document IDs ─────────
+        # ── 4. Enrich: fetch filenames for retrieved document IDs ─────────
         doc_ids = list({c.document_id for c in raw_chunks})
         docs_result = await db.execute(
             select(Document.id, Document.filename).where(Document.id.in_(doc_ids))
@@ -84,38 +91,39 @@ class RetrieverService:
             row.id: row.filename for row in docs_result.fetchall()
         }
 
-        # ── 4. Build citation schemas ─────────────────────────────────────
-        citations: list[CitationSchema] = []
-        for chunk in raw_chunks:
-            snippet = self._make_snippet(chunk.content)
-            citations.append(CitationSchema(
+        # ── 5. Build citation schemas ─────────────────────────────────────
+        citations: list[CitationSchema] = [
+            CitationSchema(
                 chunk_id=chunk.chunk_id,
                 document_id=chunk.document_id,
                 filename=doc_map.get(chunk.document_id, "Unknown"),
                 chunk_index=chunk.chunk_index,
-                snippet=snippet,
+                snippet=self._make_snippet(chunk.content),
                 similarity=round(chunk.similarity, 4),
-            ))
+            )
+            for chunk in raw_chunks
+        ]
 
-        # ── 5. Audit log ──────────────────────────────────────────────────
-        audit = AuditLog(
+        # ── 6. Audit log ──────────────────────────────────────────────────
+        db.add(AuditLog(
             query_log_id=query_log_id,
             event_type="retrieval",
             payload={
                 "query": query[:200],
-                "top_k": top_k,
+                "top_k": resolved_top_k,
+                "min_similarity": resolved_min_sim,
                 "chunks_found": len(raw_chunks),
                 "backend": backend_name,
                 "similarities": [round(c.similarity, 4) for c in raw_chunks],
             },
-        )
-        db.add(audit)
-        # Caller commits via get_db() dependency
+        ))
 
         logger.info(
             "retrieval_complete",
             query_log_id=str(query_log_id),
             chunks=len(raw_chunks),
+            top_k=resolved_top_k,
+            min_similarity=resolved_min_sim,
             top_similarity=raw_chunks[0].similarity if raw_chunks else 0,
         )
         return citations, raw_chunks
@@ -135,12 +143,10 @@ class RetrieverService:
         if not raw_chunks:
             return "No relevant context found."
 
-        lines = []
-        for i, chunk in enumerate(raw_chunks, start=1):
-            lines.append(
-                f"[SOURCE {i}] (similarity: {chunk.similarity:.2f})\n{chunk.content}"
-            )
-        return "\n\n".join(lines)
+        return "\n\n".join(
+            f"[SOURCE {i}] (similarity: {chunk.similarity:.2f})\n{chunk.content}"
+            for i, chunk in enumerate(raw_chunks, start=1)
+        )
 
     def _make_snippet(self, content: str, max_chars: int = 300) -> str:
         """

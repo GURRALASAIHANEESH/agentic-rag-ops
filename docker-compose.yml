@@ -1,4 +1,9 @@
+# docker-compose.yml
+# D:\RAG_Ops\docker-compose.yml
+
 services:
+
+  # ── PostgreSQL + pgvector ──────────────────────────────────────────────────
   postgres:
     image: pgvector/pgvector:pg16
     container_name: ragops_postgres
@@ -7,17 +12,56 @@ services:
       POSTGRES_USER: ragops
       POSTGRES_PASSWORD: ragops_pass
       POSTGRES_DB: ragops_db
-      POSTGRES_HOST_AUTH_METHOD: trust # ← add this line
+      POSTGRES_HOST_AUTH_METHOD: trust
     ports:
       - "5433:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
+      - ./backend/migrations/versions/001_init.sql:/docker-entrypoint-initdb.d/001_init.sql
     healthcheck:
       test: [ "CMD-SHELL", "pg_isready -U ragops -d ragops_db" ]
       interval: 10s
       timeout: 5s
       retries: 5
 
+  # ── FastAPI Backend ────────────────────────────────────────────────────────
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: ragops_backend
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy # waits for pg_isready before starting
+    env_file:
+      - .env # loads all settings from root .env
+    environment:
+      # Override DATABASE_URL to use Docker service name, not localhost
+      DATABASE_URL: postgresql+asyncpg://ragops:ragops_pass@postgres:5432/ragops_db
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./backend:/app # live reload in development
+      - /app/__pycache__ # exclude pycache from mount
+    command: >
+      sh -c "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload"
+
+  # ── Next.js Frontend ───────────────────────────────────────────────────────
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: ragops_frontend
+    restart: unless-stopped
+    depends_on:
+      - backend
+    environment:
+      NEXT_PUBLIC_API_URL: http://localhost:8000
+    ports:
+      - "3000:3000"
+
+  # ── Prometheus ─────────────────────────────────────────────────────────────
   prometheus:
     image: prom/prometheus:v2.52.0
     container_name: ragops_prometheus
@@ -30,6 +74,7 @@ services:
       - "--config.file=/etc/prometheus/prometheus.yml"
       - "--storage.tsdb.path=/prometheus"
 
+  # ── Grafana ────────────────────────────────────────────────────────────────
   grafana:
     image: grafana/grafana:10.4.2
     container_name: ragops_grafana
@@ -41,6 +86,8 @@ services:
       GF_SECURITY_ADMIN_PASSWORD: admin
     volumes:
       - grafana_data:/var/lib/grafana
+    depends_on:
+      - prometheus
 
 volumes:
   postgres_data:

@@ -5,7 +5,6 @@ from typing import Any
 import structlog
 from app.core.config import get_settings
 
-settings = get_settings()
 
 
 def configure_logging() -> None:
@@ -17,7 +16,7 @@ def configure_logging() -> None:
 
     Call this once at app startup in main.py lifespan.
     """
-    log_level = getattr(logging, settings.LOG_LEVEL.upper(), logging.INFO)
+    log_level = getattr(logging, get_settings().LOG_LEVEL.upper(), logging.INFO)
 
     # Shared processors applied to every log event
     shared_processors = [
@@ -29,7 +28,7 @@ def configure_logging() -> None:
         structlog.processors.format_exc_info,
     ]
 
-    if settings.LOG_FORMAT == "json":
+    if get_settings().LOG_FORMAT == "json":
         # Production: machine-readable JSON
         renderer = structlog.processors.JSONRenderer()
     else:
@@ -61,7 +60,7 @@ def configure_logging() -> None:
     # Silence noisy third-party loggers in production
     logging.getLogger("uvicorn.access").setLevel(logging.WARNING)
     logging.getLogger("sqlalchemy.engine").setLevel(
-        logging.DEBUG if settings.DEBUG else logging.WARNING
+        logging.DEBUG if get_settings().DEBUG else logging.WARNING
     )
 
 
