@@ -88,10 +88,10 @@ User Query
 | **LLM** | Ollama (Llama 3), Groq API, OpenAI API |
 | **Cache** | Redis |
 | **Ingestion** | LangChain Text Splitters, Async Workers |
-| **Observability** | Prometheus, Grafana |
-| **Infrastructure** | Docker Compose, Kubernetes, Terraform |
+| **Observability** | FastAPI Docs, Structured Logging |
+| **Infrastructure** | Docker Compose |
 | **CI/CD** | GitHub Actions |
-| **Testing** | Pytest, Playwright (E2E) |
+| **Testing** | Pytest |
 
 ---
 
@@ -196,10 +196,6 @@ RAG_Ops/
 │   ├── alembic.ini
 │   └── requirements.txt
 │
-├── e2e/
-│   ├── tests/
-│   │   └── query_flow.spec.ts         # Playwright E2E test — query flow
-│   └── playwright.config.ts
 │
 ├── frontend/
 │   ├── src/
@@ -249,21 +245,6 @@ RAG_Ops/
 │   ├── tsconfig.json
 │   └── package.json
 │
-├── infra/
-│   ├── grafana/
-│   │   ├── alert_rules.yaml           # Grafana alert rules
-│   │   ├── dashboard.json             # Grafana dashboard config
-│   │   └── prometheus.yml             # Prometheus scrape config
-│   ├── k8s/
-│   │   ├── agentic-rag-deployment.yaml
-│   │   ├── configmap.yaml
-│   │   ├── frontend-deployment.yaml
-│   │   ├── ingress.yaml
-│   │   └── postgres-statefulset.yaml
-│   └── terraform/
-│       ├── main.tf
-│       ├── outputs.tf
-│       └── variables.tf
 │
 ├── llm/
 │   ├── setup_llama.sh                 # Ollama + Llama 3 setup script
@@ -304,13 +285,6 @@ cd backend
 pytest tests/ -v
 ```
 
-### End-to-End Tests (Playwright)
-
-```bash
-cd e2e
-npx playwright test
-```
-
 ### Ingest Sample Documents
 
 ```bash
@@ -323,30 +297,10 @@ docker compose exec backend python scripts/ingest_sample_docs.py
 
 | Tool | URL | Purpose |
 |---|---|---|
-| **Grafana** | http://localhost:3001 | Dashboards & alerts |
-| **Prometheus** | http://localhost:9090 | Metrics scraping |
+
 | **FastAPI Docs** | http://localhost:8000/docs | Interactive API explorer |
 
----
 
-## ☸️ Kubernetes Deployment
-
-```bash
-kubectl apply -f infra/k8s/
-```
-
-> Configure `infra/k8s/configmap.yaml` with your environment values before deploying.
-
----
-
-## 🏗️ Infrastructure (Terraform)
-
-```bash
-cd infra/terraform
-terraform init
-terraform plan
-terraform apply
-```
 
 ---
 
