@@ -12,10 +12,8 @@ RUN apk add --no-cache libc6-compat
 
 WORKDIR /app
 
-# Copy lockfile and manifests only — layer-cache npm install
 COPY package.json package-lock.json ./
 
-# Clean install — uses lockfile exactly
 RUN npm ci --frozen-lockfile
 
 # ── Stage 2: Build ────────────────────────────────────────────
@@ -23,22 +21,19 @@ FROM node:20-alpine AS builder
 
 WORKDIR /app
 
-# Copy deps from stage 1
 COPY --from=deps /app/node_modules ./node_modules
 
-# Copy all source
 COPY . .
 
-# Build args become env vars during build
 ARG NEXT_PUBLIC_API_URL=http://localhost:8000
 ARG NEXT_PUBLIC_APP_NAME="RAG Ops"
 ARG NEXT_PUBLIC_APP_VERSION="1.0.0"
+ARG INTERNAL_API_URL=http://localhost:8000
 
 ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
 ENV NEXT_PUBLIC_APP_NAME=$NEXT_PUBLIC_APP_NAME
 ENV NEXT_PUBLIC_APP_VERSION=$NEXT_PUBLIC_APP_VERSION
-
-# Disable Next.js telemetry in CI
+ENV INTERNAL_API_URL=$INTERNAL_API_URL
 ENV NEXT_TELEMETRY_DISABLED=1
 
 RUN npm run build
@@ -51,16 +46,13 @@ WORKDIR /app
 ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
 
-# Create non-root user
 RUN addgroup --system --gid 1001 nodejs \
     && adduser  --system --uid 1001 nextjs
 
-# Copy standalone output (next.config.ts output: "standalone")
 COPY --from=builder /app/public                    ./public
 COPY --from=builder /app/.next/standalone          ./
 COPY --from=builder /app/.next/static ./.next/static
 
-# Set correct file ownership
 RUN chown -R nextjs:nodejs /app
 
 USER nextjs

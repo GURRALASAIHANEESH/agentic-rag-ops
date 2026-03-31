@@ -15,10 +15,11 @@ const nextConfig = {
     return [];
   },
   async rewrites() {
+    const backend = process.env.INTERNAL_API_URL ?? "http://localhost:8000";
     return [
       {
         source: '/api/:path*',
-        destination: 'http://localhost:8000/api/:path*',
+        destination: `${backend}/api/:path*`,
       },
     ];
   },

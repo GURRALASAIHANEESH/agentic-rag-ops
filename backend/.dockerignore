@@ -57,3 +57,7 @@ faiss_index*
 
 # Alembic won't need these in image
 *.pyc
+
+.cache
+**/.cache
+.cache/huggingface

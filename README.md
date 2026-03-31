@@ -1,8 +1,3 @@
-Here's the polished README with an accurate, clean project structure — temp files, fix scripts, and clutter removed:
-
----
-
-```markdown
 # 🧠 RAG Ops — Agentic Intelligence Platform
 
 > A production-grade Retrieval-Augmented Generation (RAG) system with multi-agent 
@@ -37,7 +32,7 @@ Here's the polished README with an accurate, clean project structure — temp fi
 
 ## 🏗️ Architecture
 
-```
+```text
 User Query
 │
 ▼
@@ -138,7 +133,7 @@ http://localhost:3000/register
 
 ## 📁 Project Structure
 
-```
+```text
 RAG_Ops/
 ├── .github/
 │   └── workflows/
@@ -371,18 +366,3 @@ Feel free to open a [GitHub Issue](https://github.com/GURRALASAIHANEESH/agentic-
 ## 📄 License
 
 This project is licensed under the **MIT License** — see the [LICENSE](LICENSE) file for details.
-```
-
----
-
-### What was cleaned up
-
-| Removed | Reason |
-|---|---|
-| `fix_batch06_namespace.sql` | One-off hotfix script, not part of the project |
-| `fix_resume_namespace.sql` | One-off hotfix script, not part of the project |
-| `query_test.json` | Temporary test artifact |
-| `scaffold.ps1` | Scaffolding utility, not relevant to users |
-| `-w` | Stray file, likely a CLI artifact |
-| Duplicate migration files | `0002_fix` and `0002_resize` suggest iteration leftovers |
-| Root-level `test_ingestion.py` | Duplicate of `backend/tests/test_ingestion.py` |

@@ -54,6 +54,8 @@ class QueryRequest(BaseModel):
     workspace_id: UUID
     top_k: int = Field(default=5, ge=1, le=20)     # how many chunks to retrieve
     stream: bool = True                              # SSE streaming vs. single JSON
+    document_ids: list[UUID] | None = None
+    section: str | None = None
 
     @field_validator("query")
     @classmethod

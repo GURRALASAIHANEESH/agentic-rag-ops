@@ -10,3 +10,7 @@
 .github
 infra/
 *.md
+
+.cache
+**/.cache
+.cache/huggingface
