@@ -257,8 +257,8 @@ class TestIngestionService:
                 return_value=mock_store,
             ),
             patch(
-                "app.services.ingestion.settings.DOCUMENT_RETENTION_DAYS",
-                30,
+                "app.services.ingestion.get_settings",
+                **{"return_value.DOCUMENT_RETENTION_DAYS": 30, "return_value.CHUNK_SIZE": 512, "return_value.CHUNK_OVERLAP": 64}
             ),
         ):
             service = IngestionService()

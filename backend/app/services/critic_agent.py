@@ -10,7 +10,6 @@ from app.services.embedder import get_embedding_service
 from app.services.vector_store import RetrievedChunk
 from app.metrics.prometheus import CRITIC_SCORE, CRITIC_VERIFIED_CLAIMS
 
-settings = get_settings()
 logger = get_logger(__name__)
 
 
@@ -41,6 +40,37 @@ Respond ONLY with a JSON array. No extra text. Example:
   }
 ]
 """
+
+CONTRADICTION_SYSTEM_PROMPT = """You are a contradiction detector for a RAG system.
+You will be given an AI-generated answer and the source chunks used to produce it.
+
+Your job: Identify any claims in the answer that DIRECTLY CONTRADICT the sources.
+A contradiction is when the answer states X but a source explicitly states NOT-X.
+Absence of information is NOT a contradiction — only flag direct conflicts.
+
+Respond ONLY with a JSON array. Empty array if no contradictions found. Example:
+[
+  {
+    "claim": "The model was released in 2023.",
+    "contradiction": "SOURCE 2 states the model was released in 2024.",
+    "severity": "high"
+  }
+]
+"""
+
+def _token_overlap(text_a: str, text_b: str) -> float:
+    """
+    Computes Jaccard token overlap between two strings.
+    Used for fuzzy matching contradiction claims to verified claims.
+    Returns 0.0–1.0. Avoids importing heavy NLP libs.
+    """
+    tokens_a = set(text_a.lower().split())
+    tokens_b = set(text_b.lower().split())
+    if not tokens_a or not tokens_b:
+        return 0.0
+    intersection = tokens_a & tokens_b
+    union = tokens_a | tokens_b
+    return len(intersection) / len(union)
 
 
 class CriticAgent:
@@ -75,7 +105,7 @@ class CriticAgent:
         Main verification entry point.
         Returns a CriticReport with per-claim verification status.
         """
-        if not settings.CRITIC_ENABLED or not raw_chunks:
+        if not get_settings().CRITIC_ENABLED or not raw_chunks:
             return self._empty_report(answer)
 
         # ── Build numbered source block for the prompt ────────────────────
@@ -89,6 +119,35 @@ class CriticAgent:
         verified_claims = await self._embedding_fallback(
             llm_claims, raw_chunks, chunk_embeddings
         )
+
+        # ── Pass 3: Contradiction detection ───────────────────────────────
+        # Runs only when critic is enabled and we have real source chunks.
+        # Web results are included — contradicting a web source is still a bug.
+        contradictions = await self._contradiction_check(answer, source_block)
+
+        # Downgrade any verified claim that has a detected contradiction
+        if contradictions:
+            contradiction_claims = {c.get("claim", "").lower() for c in contradictions}
+            for claim_dict in verified_claims:
+                claim_lower = claim_dict.get("claim", "").lower()
+                # Fuzzy match: if contradiction claim text overlaps significantly
+                for contra in contradictions:
+                    contra_claim = contra.get("claim", "").lower()
+                    if (
+                        claim_lower in contra_claim
+                        or contra_claim in claim_lower
+                        or _token_overlap(claim_lower, contra_claim) > 0.6
+                    ):
+                        claim_dict["status"] = "unverified"
+                        claim_dict["confidence"] = min(
+                            float(claim_dict.get("confidence", 0.0)) * 0.3, 0.3
+                        )
+                        logger.warning(
+                            "critic_claim_contradicted",
+                            claim=claim_dict["claim"][:80],
+                            contradiction=contra.get("contradiction", "")[:80],
+                        )
+                        break
 
         # ── Map source indices back to real chunk UUIDs ───────────────────
         final_claims = self._map_sources_to_chunk_ids(verified_claims, raw_chunks)
@@ -112,6 +171,7 @@ class CriticAgent:
                 "verified": report.verified_count,
                 "unverified": report.unverified_count,
                 "partial": report.partial_count,
+                "contradictions_found": len(contradictions),
                 "model": self._llm.model_name,
                 "claims_count": len(final_claims),
             },
@@ -172,7 +232,7 @@ class CriticAgent:
         This catches cases where the LLM hallucinated a verdict but the
         semantic overlap is actually strong.
         """
-        threshold = settings.CRITIC_CONFIDENCE_THRESHOLD
+        threshold = get_settings().CRITIC_CONFIDENCE_THRESHOLD
         enriched = []
 
         for claim_dict in llm_claims:
@@ -205,15 +265,87 @@ class CriticAgent:
 
         return enriched
 
+    async def _contradiction_check(
+        self,
+        answer: str,
+        source_block: str,
+    ) -> list[dict]:
+        """
+        LLM pass that detects direct contradictions between the answer
+        and source chunks.
+
+        Unlike claim verification (which checks support), this specifically
+        hunts for cases where the answer states the OPPOSITE of a source.
+        Example: answer says "FastAPI uses Flask routing" but source says
+        "FastAPI uses Starlette routing".
+
+        Returns list of contradiction dicts. Empty list = no contradictions.
+        Fails open — any LLM/parse error returns [] to never block the pipeline.
+        """
+        import json
+
+        prompt = (
+            f"SOURCES:\n{source_block}\n\n"
+            f"ANSWER TO CHECK:\n{answer}\n\n"
+            "List any claims in the answer that directly contradict the sources. "
+            "Return empty array [] if no contradictions. JSON only."
+        )
+
+        try:
+            raw = await self._llm.generate(
+                prompt=prompt,
+                system=CONTRADICTION_SYSTEM_PROMPT,
+            )
+            cleaned = raw.strip().strip("```json").strip("```").strip()
+            contradictions = json.loads(cleaned)
+            if not isinstance(contradictions, list):
+                return []
+
+            logger.info(
+                "critic_contradiction_check",
+                contradictions_found=len(contradictions),
+            )
+            return contradictions
+
+        except Exception as e:
+            logger.warning("critic_contradiction_check_failed", error=str(e))
+            return []
+
     async def _get_chunk_embeddings(
-        self, raw_chunks: list[RetrievedChunk]
+        self,
+        raw_chunks: list,
     ) -> list[list[float]]:
         """
         Returns embeddings for all retrieved chunks.
-        Embeds chunk content in batch (fast single model call).
+
+        Prefer stored embeddings from the chunk object (zero cost — already
+        computed during ingestion). Fall back to re-embedding only for web
+        results (WebResult has no stored embedding).
+
+        This avoids a full embed_batch() call on every critic invocation,
+        which was the main latency cost of the previous implementation.
         """
-        texts = [c.content for c in raw_chunks]
-        return await self._embedder.embed_batch(texts)
+        embeddings = []
+        texts_to_embed = []
+        indices_to_embed = []
+
+        for i, chunk in enumerate(raw_chunks):
+            stored = getattr(chunk, "embedding", None)
+            if stored is not None and len(stored) > 0:
+                embeddings.append(stored)
+            else:
+                # Web result or chunk with no stored embedding — queue for batch embed
+                embeddings.append(None)
+                texts_to_embed.append(chunk.content)
+                indices_to_embed.append(i)
+
+        # Batch embed only the chunks that need it (typically web results only)
+        if texts_to_embed:
+            batch_embeddings = await self._embedder.embed_batch(texts_to_embed)
+            for idx, emb in zip(indices_to_embed, batch_embeddings):
+                embeddings[idx] = emb
+
+        return embeddings
 
     def _map_sources_to_chunk_ids(
         self,

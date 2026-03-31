@@ -59,6 +59,26 @@ class Workspace(Base):
     name: Mapped[str] = mapped_column(Text, nullable=False)
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
 
+    # ── Phase 3C: Per-workspace rate limiting ─────────────────────────────
+    rate_limit_rpm: Mapped[int] = mapped_column(
+        default=60,
+        nullable=False,
+        server_default="60",
+        comment="Max requests per minute allowed for this workspace",
+    )
+    rate_limit_daily: Mapped[int] = mapped_column(
+        default=1000,
+        nullable=False,
+        server_default="1000",
+        comment="Max requests per calendar day allowed for this workspace",
+    )
+    rate_limit_enabled: Mapped[bool] = mapped_column(
+        default=True,
+        nullable=False,
+        server_default="true",
+        comment="Master switch — set False to bypass limits for this workspace",
+    )
+
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
     )

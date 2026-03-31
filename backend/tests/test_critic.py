@@ -263,8 +263,8 @@ class TestCriticVerify:
                 return_value=mock_embedder,
             ),
             patch(
-                "app.services.critic_agent.settings.CRITIC_ENABLED",
-                False,
+                "app.services.critic_agent.get_settings",
+                **{"return_value.CRITIC_ENABLED": False}
             ),
         ):
             critic = CriticAgent(llm_client=mock_llm)

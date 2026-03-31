@@ -25,7 +25,7 @@ from pathlib import Path
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from sqlalchemy import select
-from app.core.database import AsyncSessionLocal, ensure_pgvector_extension
+from app.core.database import get_session_factory, ensure_pgvector_extension
 from app.models.user import User, Workspace
 from app.models.document import Document
 from app.services.ingestion import IngestionService
@@ -39,7 +39,8 @@ async def ingest_all():
     print("📥 Starting sample document ingestion...")
     await ensure_pgvector_extension()
 
-    async with AsyncSessionLocal() as db:
+    SessionLocal = get_session_factory()
+    async with SessionLocal() as db:
         # ── Get demo user ─────────────────────────────────────────────────
         result = await db.execute(
             select(User).where(User.email == DEMO_USER_EMAIL)

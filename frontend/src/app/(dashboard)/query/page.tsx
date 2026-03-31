@@ -31,9 +31,7 @@ export default function QueryPage() {
     const [queryLogId, setQueryLogId] = useState<string | null>(null);
     const [criticData, setCriticData] = useState<CriticReportType | null>(null);
 
-    // suppress lint — these are wired to QueryConsole callbacks below
-    void setQueryLogId;
-    void setCriticData;
+    // State is wired to QueryConsole callbacks below
 
     if (!active) {
         return <NoWorkspaceBanner />;
@@ -64,52 +62,30 @@ export default function QueryPage() {
                 </div>
 
                 <QueryConsole
-                    workspaceId={active.id}
-                    onCitationSelect={(c) => {
-                        setActiveCitations((prev) =>
-                            prev.find((x) => x.chunk_id === c.chunk_id) ? prev : [...prev, c]
-                        );
-                    }}
+                  workspaceId={active.id}
+                  onCitationsChange={(citations) => setActiveCitations(citations)}
+                  onCriticChange={(report) => setCriticData(report)}
+                  onQueryLogIdChange={(id) => setQueryLogId(id)}
+                  onQueryStart={() => {
+                    // Reset panel state on new query
+                    setActiveCitations([]);
+                    setCriticData(null);
+                    setQueryLogId(null);
+                  }}
                 />
             </div>
 
             {/* ── Right: Provenance + Critic ───────────────────────────────────── */}
             {rightPanelOpen && (
-                <aside
-                    className={clsx(
-                        "flex flex-col shrink-0 h-full",
-                        "w-panel overflow-y-auto scrollbar-hide",
-                        "animate-slide-in-right bg-bg-2/40"
-                    )}
-                    aria-label="Evidence panel"
-                >
-                    <div className="flex flex-col gap-4 p-4">
-                        <section aria-labelledby="provenance-heading">
-                            <h2
-                                id="provenance-heading"
-                                className="text-xs font-semibold text-text-muted uppercase tracking-wide mb-3"
-                            >
-                                Sources
-                            </h2>
-                            <ProvenanceViewer
-                                citations={activeCitations}
-                                queryLogId={queryLogId}
-                            />
-                        </section>
-
-                        {criticData && (
-                            <section aria-labelledby="critic-heading">
-                                <h2
-                                    id="critic-heading"
-                                    className="text-xs font-semibold text-text-muted uppercase tracking-wide mb-3"
-                                >
-                                    Verification
-                                </h2>
-                                <CriticReport report={criticData} />
-                            </section>
-                        )}
-                    </div>
-                </aside>
+              <aside className="w-[420px] shrink-0 flex flex-col gap-4 overflow-y-auto pr-1">
+                <ProvenanceViewer
+                  citations={activeCitations}
+                  queryLogId={queryLogId}
+                />
+                {criticData && (
+                  <CriticReport report={criticData} />
+                )}
+              </aside>
             )}
         </div>
     );
@@ -123,7 +99,7 @@ function NoWorkspaceBanner() {
                 Select or create a workspace from the sidebar to start querying.
             </p>
             <Button variant="primary" size="sm" asChild>
-                <a href="/dashboard/workspace">Go to workspaces</a>
+                <a href="/workspace" className="text-indigo-400 hover:text-indigo-300 underline underline-offset-2 transition-colors">Go to workspaces</a>
             </Button>
         </div>
     );

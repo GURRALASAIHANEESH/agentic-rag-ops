@@ -1,0 +1,16 @@
+# Never send these to any Docker build context
+**/.venv
+**/node_modules
+**/__pycache__
+**/.pytest_cache
+**/.next
+**/uploads
+**/*.pyc
+.git
+.github
+infra/
+*.md
+
+.cache
+**/.cache
+.cache/huggingface

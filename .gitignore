@@ -1,4 +1,4 @@
-# Python
+﻿# Python
 __pycache__/
 *.py[cod]
 *.pyo
@@ -25,7 +25,6 @@ backend/body.json
 body.json
 backend/check_*.py
 backend/debug_*.py
-backend/test_ingestion.py
 
 # Node
 frontend/node_modules/
@@ -51,3 +50,16 @@ infra/terraform/.terraform/
 # FAISS index (runtime artifact)
 backend/faiss_index*
 backend/faiss_store/
+
+# Ignored temporary workspace scripts
+backend/temp_scripts/
+
+# Ignored temporary workspace scripts
+backend/temp_scripts/
+
+backend/.cache/
+backend/.cache/**
+
+*.sql
+query_test.json
+-w

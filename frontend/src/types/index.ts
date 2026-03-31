@@ -82,6 +82,10 @@ export interface Citation {
     chunk_index: number;
     snippet: string;
     similarity: number;
+    // Optional — present for document chunks, absent for web results
+    page_num?: number | null;
+    section?: string | null;
+    source_type?: "document" | "web_search" | null;
 }
 
 export type ClaimStatus = "verified" | "partial" | "unverified";

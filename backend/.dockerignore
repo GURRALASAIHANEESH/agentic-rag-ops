@@ -1,0 +1,63 @@
+# Python
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.egg-info
+dist/
+build/
+.eggs/
+
+# Virtual environments
+.venv
+venv
+env
+ENV
+
+# Debug/scratch scripts (cleanup pass)
+check.py
+check_chunks_script.py
+check_cols.py
+check_db.py
+check_doc.py
+debug2.py
+debug_file.py
+debug_ingest.py
+fix_chr.py
+fix_chunker.py
+fix_chunker2.py
+fix_final.py
+fix_final2.py
+fix_size.py
+inspect2.py
+inspect_chunker.py
+test_chunks.py
+test_ingestion.py
+scratch/
+
+# Test artifacts
+.pytest_cache
+htmlcov/
+.coverage
+coverage.xml
+
+# IDE
+.vscode
+.idea
+*.swp
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Uploads / local data (never bake into image)
+uploads/
+faiss_index*
+
+# Alembic won't need these in image
+*.pyc
+
+.cache
+**/.cache
+.cache/huggingface

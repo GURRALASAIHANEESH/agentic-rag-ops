@@ -22,7 +22,6 @@ from app.schemas.auth import (
 )
 
 router = APIRouter()
-settings = get_settings()
 logger = get_logger(__name__)
 
 
@@ -83,7 +82,7 @@ async def signup(
         tokens=TokenResponse(
             access_token=access_token,
             refresh_token=refresh_token,
-            expires_in=settings.JWT_ACCESS_TOKEN_EXPIRE_MINUTES * 60,
+            expires_in=get_settings().JWT_ACCESS_TOKEN_EXPIRE_MINUTES * 60,
         ),
     )
 
@@ -136,7 +135,7 @@ async def login(
     return TokenResponse(
         access_token=access_token,
         refresh_token=refresh_token,
-        expires_in=settings.JWT_ACCESS_TOKEN_EXPIRE_MINUTES * 60,
+        expires_in=get_settings().JWT_ACCESS_TOKEN_EXPIRE_MINUTES * 60,
     )
 
 
@@ -184,7 +183,7 @@ async def refresh_token(
     return TokenResponse(
         access_token=new_access,
         refresh_token=new_refresh,
-        expires_in=settings.JWT_ACCESS_TOKEN_EXPIRE_MINUTES * 60,
+        expires_in=get_settings().JWT_ACCESS_TOKEN_EXPIRE_MINUTES * 60,
     )
 
 

@@ -1,3 +1,10 @@
+import os
+from pathlib import Path
+from dotenv import load_dotenv
+
+# Must be first: loads .env before app imports trigger get_settings()
+load_dotenv(Path(__file__).resolve().parents[2] / ".env")
+
 """
 Pytest configuration and shared fixtures.
 
@@ -235,3 +242,14 @@ def mock_embedder():
     embedder.embed_batch = mock_embed_batch
     embedder.cosine_similarity = mock_cosine_similarity
     return embedder
+
+
+from app.core.config import clear_settings_cache
+
+
+@pytest.fixture(autouse=True)
+def reset_settings_cache():
+    """Ensure every test gets a fresh Settings read — no stale cache bleed."""
+    clear_settings_cache()
+    yield
+    clear_settings_cache()

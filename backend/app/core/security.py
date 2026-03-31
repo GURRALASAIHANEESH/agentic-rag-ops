@@ -12,7 +12,6 @@ from sqlalchemy import select
 from app.core.config import get_settings
 from app.core.database import get_db
 
-settings = get_settings()
 
 # ── Password hashing ──────────────────────────────────────────────────────────
 # bcrypt with 12 rounds — good balance of security vs. latency on a laptop
@@ -45,7 +44,7 @@ def create_access_token(
     now = datetime.now(timezone.utc)
     expire = now + (
         expires_delta
-        or timedelta(minutes=settings.JWT_ACCESS_TOKEN_EXPIRE_MINUTES)
+        or timedelta(minutes=get_settings().JWT_ACCESS_TOKEN_EXPIRE_MINUTES)
     )
     payload = {
         "sub": subject,
@@ -55,7 +54,7 @@ def create_access_token(
         "exp": expire,
         "type": "access",
     }
-    return jwt.encode(payload, settings.JWT_SECRET_KEY, algorithm=settings.JWT_ALGORITHM)
+    return jwt.encode(payload, get_settings().JWT_SECRET_KEY, algorithm=get_settings().JWT_ALGORITHM)
 
 
 def create_refresh_token(subject: str) -> str:
@@ -64,14 +63,14 @@ def create_refresh_token(subject: str) -> str:
     Only contains sub and exp — minimal claims for security.
     """
     now = datetime.now(timezone.utc)
-    expire = now + timedelta(days=settings.JWT_REFRESH_TOKEN_EXPIRE_DAYS)
+    expire = now + timedelta(days=get_settings().JWT_REFRESH_TOKEN_EXPIRE_DAYS)
     payload = {
         "sub": subject,
         "iat": now,
         "exp": expire,
         "type": "refresh",
     }
-    return jwt.encode(payload, settings.JWT_SECRET_KEY, algorithm=settings.JWT_ALGORITHM)
+    return jwt.encode(payload, get_settings().JWT_SECRET_KEY, algorithm=get_settings().JWT_ALGORITHM)
 
 
 def decode_token(token: str) -> dict:
@@ -81,8 +80,8 @@ def decode_token(token: str) -> dict:
     try:
         payload = jwt.decode(
             token,
-            settings.JWT_SECRET_KEY,
-            algorithms=[settings.JWT_ALGORITHM],
+            get_settings().JWT_SECRET_KEY,
+            algorithms=[get_settings().JWT_ALGORITHM],
         )
         return payload
     except JWTError as e:

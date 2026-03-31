@@ -1,0 +1,15 @@
+﻿Gurrala Sai Haneesh Hyderabad Telangana EDUCATION Malla Reddy Engineering College Hyderabad 2021 2025 BTech Computer Science Engineering Data Science
+
+EXPERIENCE ATGWorld Networks Private Limited July 2025 February 2026 AI Developer Intern Remote Engineered a real-time conversational AI avatar integrating Whisper.cpp GPT response generation OpenAI TTS and Wav2Lip. Automated the AI video generation pipeline and integrated AWS S3. Optimized FFmpeg rendering reducing pipeline latency by 25 percent. Implemented chunk-based audio streaming. Containerized on RunPod using Docker. Designed CI/CD pipeline using Docker AWS ECR CodeBuild Lambda and API Gateway. Technologies Python Whisper.cpp FFmpeg Wav2Lip Docker RunPod AWS S3 WebRTC Gradio
+
+EXPERIENCE Skilltimate Technologies May 2024 AI and Deep Learning Intern Hyderabad Developed and trained a CNN-based pneumonia detection model using TensorFlow and Keras. Extended with severity estimation component. Deployed Flask-based inference service achieving 92 percent validation accuracy. Technologies Python TensorFlow Keras Flask
+
+PROJECT DevifyX Blog API Node.js Express.js Supabase 2025 Built a fully functional RESTful API for a blogging platform supporting authentication CRUD operations comments likes and admin moderation. Integrated Supabase PostgreSQL for database and JWT-based authentication. Implemented role-based authorization input validation and robust error handling for production reliability.
+
+PROJECT Self-Healing Classification System LangGraph LoRA DistilBERT 2025 Engineered a sentiment classification system using LangGraph DAGs with fallback logic and human-in-the-loop recovery. Fine-tuned DistilBERT using LoRA on IMDB dataset achieving 90 percent accuracy. Integrated ConfidenceCheckNode and FallbackNode for adaptive error handling and real-time healing.
+
+PROJECT Agentic Workflow Automation LangGraph LangChain Streamlit OpenAI API 2025 Developed an AI-driven agentic workflow system using LangGraph to automate NLP subtasks with fallback and retry logic. Integrated OpenAI API via OpenRouter for query processing. Orchestrated agents Plan Refine Tool Reflect with recursion control for self-healing task automation. Deployed modular backend on Streamlit reducing manual intervention by 80 percent.
+
+SKILLS AI ML Applied LLMs LangChain LangGraph LoRA CNNs Programming Python Java C Backend FastAPI Flask Node.js Express.js Cloud Docker AWS S3 RunPod Databases PostgreSQL Supabase MySQL
+
+CERTIFICATIONS Azure Fundamentals Microsoft Data Visualization Forage Python for Data Science Sololearn Java Basic Skill Certification HackerRank

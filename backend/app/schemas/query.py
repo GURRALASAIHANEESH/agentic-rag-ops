@@ -18,7 +18,7 @@ class CitationSchema(BaseModel):
     snippet: str                        # â‰¤300 char excerpt shown in UI
     similarity: float = Field(..., ge=0.0, le=1.0)   # cosine similarity score
 
-    model_config = {"from_attributes": True}
+    model_config = {"from_attributes": True, "protected_namespaces": ()}
 
 
 # â”€â”€ Critic output â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
@@ -54,6 +54,8 @@ class QueryRequest(BaseModel):
     workspace_id: UUID
     top_k: int = Field(default=5, ge=1, le=20)     # how many chunks to retrieve
     stream: bool = True                              # SSE streaming vs. single JSON
+    document_ids: list[UUID] | None = None
+    section: str | None = None
 
     @field_validator("query")
     @classmethod
@@ -85,7 +87,7 @@ class QueryResponse(BaseModel):
     critic: CriticReport                # verification map
     created_at: datetime
 
-    model_config = {"from_attributes": True}
+    model_config = {"from_attributes": True, "protected_namespaces": ()}
 
 
 # â”€â”€ Streaming chunk â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
