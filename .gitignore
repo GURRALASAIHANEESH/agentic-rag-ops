@@ -59,3 +59,7 @@ backend/temp_scripts/
 
 backend/.cache/
 backend/.cache/**
+
+*.sql
+query_test.json
+-w
