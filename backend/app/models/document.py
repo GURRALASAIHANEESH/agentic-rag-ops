@@ -16,7 +16,7 @@ from app.core.database import Base
 # tests and CI where DATABASE_URL / JWT_SECRET_KEY are not yet set.
 # This value MUST match EMBEDDING_DIMENSION in config.py and the pgvector index
 # dimension in 001_init.sql. If you change the model, update all three.
-EMBEDDING_DIMENSION = 384
+EMBEDDING_DIMENSION = 768
 
 
 class Document(Base):

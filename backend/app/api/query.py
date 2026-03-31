@@ -12,8 +12,10 @@ from app.core.database import get_db
 from app.core.security import get_current_user_payload, get_user_id_from_payload
 from app.core.config import get_settings
 from app.core.logging import get_logger
+from app.core.dependencies import check_rate_limit
 from app.schemas.query import QueryRequest, QueryResponse
 from app.services.orchestrator import Orchestrator
+from app.services.rate_limiter import RateLimitResult
 
 router = APIRouter()
 logger = get_logger(__name__)
@@ -54,12 +56,15 @@ async def query(
       - error     : pipeline error
 
     Example curl (streaming):
-      curl -X POST http://localhost:8000/api/query \\
-        -H "Authorization: Bearer <token>" \\
-        -H "Content-Type: application/json" \\
+      curl -X POST http://localhost:8000/api/query \
+        -H "Authorization: Bearer <token>" \
+        -H "Content-Type: application/json" \
         -d '{"query": "What is RAG?", "workspace_id": "<uuid>", "stream": true}'
     """
     user_id = get_user_id_from_payload(payload)
+    
+    # Check rate limit inline to avoid FastAPI body consumption conflicts
+    await check_rate_limit(body.workspace_id, user_id, db)
 
     logger.info(
         "query_received",
@@ -138,12 +143,16 @@ async def query_sync(
     Runs the full pipeline and returns the complete QueryResponse in one shot.
 
     Example curl:
-      curl -X POST http://localhost:8000/api/query/sync \\
-        -H "Authorization: Bearer <token>" \\
-        -H "Content-Type: application/json" \\
+      curl -X POST http://localhost:8000/api/query/sync \
+        -H "Authorization: Bearer <token>" \
+        -H "Content-Type: application/json" \
         -d '{"query": "What is attention?", "workspace_id": "<uuid>", "stream": false}'
     """
     user_id = get_user_id_from_payload(payload)
+    
+    # Also added rate limiting here to ensure consistent protection!
+    await check_rate_limit(body.workspace_id, user_id, db)
+    
     orchestrator = Orchestrator(db=db)
 
     # Force stream=False so orchestrator uses run_sync()

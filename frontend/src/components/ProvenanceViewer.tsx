@@ -9,7 +9,6 @@ import clsx from "clsx";
 import * as Dialog from "@radix-ui/react-dialog";
 import { Button } from "@/components/ui/Button";
 import { Badge, ConfidenceBadge } from "@/components/ui/Badge";
-import { Card } from "@/components/ui/Card";
 import { Input } from "@/components/ui/Input";
 import { SkeletonCard } from "@/components/ui/Skeleton";
 import { useToast } from "@/components/ui/Toast";
@@ -79,7 +78,7 @@ export function ProvenanceViewer({
     }
 
     return (
-        <div className={clsx("flex flex-col gap-3 h-full min-h-0", className)}>
+        <div className={clsx("flex flex-col gap-3 h-full min-h-0 px-4 py-3", className)}>
 
             {/* Search */}
             <Input
@@ -88,11 +87,12 @@ export function ProvenanceViewer({
                 onChange={(e) => setSearchTerm(e.target.value)}
                 leftIcon={<Search className="h-3.5 w-3.5" aria-hidden="true" />}
                 aria-label="Filter sources"
+                className="w-full"
             />
 
             {/* Citation list */}
             <ol
-                className="flex flex-col gap-2 overflow-y-auto flex-1 min-h-0 scrollbar-hide"
+                className="flex flex-col gap-2.5 overflow-y-auto flex-1 min-h-0 scrollbar-hide"
                 aria-label={`${filtered.length} sources`}
             >
                 {filtered.map((citation, i) => (
@@ -137,67 +137,79 @@ interface CitationCardProps {
 }
 
 function CitationCard({
-    index,
-    citation,
-    searchTerm,
-    onOpen,
-    onCopy,
+  index,
+  citation,
+  searchTerm,
+  onOpen,
+  onCopy,
 }: CitationCardProps) {
-    return (
-        <li>
-            <Card
-                noPadding
-                className={clsx(
-                    "group flex flex-col gap-0 overflow-hidden",
-                    "hover:border-accent/30 transition-colors duration-fast"
-                )}
-            >
-                {/* Header row */}
-                <div className="flex items-center gap-2 px-3 py-2 border-b border-glass-border">
-                    <SourceTypeIcon filename={citation.filename} />
-                    <span
-                        className="flex-1 text-xs font-medium text-text-primary truncate-1"
-                        title={citation.filename}
-                    >
-                        {citation.filename}
-                    </span>
-                    <ConfidenceBadge score={citation.similarity} size="sm" />
-                    <Badge variant="default" size="sm" className="tabular-nums">
-                        #{index + 1}
-                    </Badge>
-                </div>
+  // Format URL-style filenames into readable domain › path
+  const displayName = citation.filename.startsWith("http")
+    ? (() => {
+        try {
+          const u = new URL(citation.filename);
+          const parts = u.pathname.replace(/\/$/, "").split("/").filter(Boolean);
+          return `${u.hostname}${parts.length ? " › " + parts.join(" › ") : ""}`;
+        } catch {
+          return citation.filename;
+        }
+      })()
+    : citation.filename;
 
-                {/* Snippet */}
-                <div className="px-3 py-2">
-                    <p className="text-xs text-text-secondary leading-relaxed truncate-3">
-                        <HighlightedText text={citation.snippet} term={searchTerm} />
-                    </p>
-                </div>
+  return (
+    <div className="group flex flex-col gap-2 px-4 py-3 rounded-xl border border-white/[0.06] bg-white/[0.02] hover:border-indigo-500/30 hover:bg-indigo-500/[0.04] transition-all duration-150">
 
-                {/* Actions */}
-                <div className="flex items-center gap-1 px-2 pb-2">
-                    <Button
-                        variant="ghost"
-                        size="xs"
-                        onClick={onOpen}
-                        leftIcon={<ChevronRight className="h-3 w-3" aria-hidden="true" />}
-                        aria-label={`View full source: ${citation.filename}`}
-                    >
-                        View
-                    </Button>
-                    <Button
-                        variant="ghost"
-                        size="xs"
-                        onClick={onCopy}
-                        leftIcon={<Copy className="h-3 w-3" aria-hidden="true" />}
-                        aria-label={`Copy citation for ${citation.filename}`}
-                    >
-                        Cite
-                    </Button>
-                </div>
-            </Card>
-        </li>
-    );
+      {/* Header: icon + name + badge + index */}
+      <div className="flex items-center gap-2 min-w-0">
+        <span className="shrink-0 text-white/30">
+          <SourceTypeIcon filename={citation.filename} />
+        </span>
+        <span className="flex-1 truncate text-xs font-medium text-white/75 leading-tight">
+          {displayName}
+        </span>
+        <span className={clsx(
+          "shrink-0 text-[10px] font-semibold px-1.5 py-0.5 rounded-md tabular-nums",
+          citation.similarity >= 0.8 ? "bg-emerald-500/15 text-emerald-400" :
+          citation.similarity >= 0.6 ? "bg-amber-500/15 text-amber-400" :
+          "bg-white/[0.06] text-white/30"
+        )}>
+          {Math.round(citation.similarity * 100)}%
+        </span>
+        <span className="shrink-0 text-[10px] text-white/20 font-mono">
+          #{index + 1}
+        </span>
+      </div>
+
+      {/* Snippet */}
+      <p className="text-[11px] leading-relaxed text-white/40 line-clamp-2 pl-5">
+        <HighlightedText text={citation.snippet} term={searchTerm} />
+      </p>
+
+      {/* Actions */}
+      <div className="flex items-center gap-2 pl-5">
+        <Button
+          variant="ghost"
+          size="xs"
+          onClick={onOpen}
+          leftIcon={<ChevronRight className="h-3 w-3" />}
+          aria-label={`View full source: ${citation.filename}`}
+          className="text-[11px] text-white/40 hover:text-indigo-300"
+        >
+          View
+        </Button>
+        <Button
+          variant="ghost"
+          size="xs"
+          onClick={onCopy}
+          leftIcon={<Copy className="h-3 w-3" />}
+          aria-label={`Copy citation for ${citation.filename}`}
+          className="text-[11px] text-white/40 hover:text-indigo-300"
+        >
+          Cite
+        </Button>
+      </div>
+    </div>
+  );
 }
 
 // ── Highlighted text ──────────────────────────────────────────────────────────
@@ -293,7 +305,9 @@ function SourceModal({ citation, onClose, searchTerm, onCopy }: SourceModalProps
                             <div className="flex items-center gap-3 px-5 py-4 border-b border-glass-border shrink-0">
                                 <SourceTypeIcon filename={citation.filename} />
                                 <Dialog.Title className="flex-1 text-sm font-semibold text-text-primary truncate-1">
-                                    {citation.filename}
+                                    <span title={citation.filename} className="break-all">
+                                      {formatFilename(citation.filename)}
+                                    </span>
                                 </Dialog.Title>
                                 <ConfidenceBadge score={citation.similarity} size="md" />
                                 <Button
@@ -340,6 +354,15 @@ function SourceModal({ citation, onClose, searchTerm, onCopy }: SourceModalProps
                                 <div className="mt-4 grid grid-cols-2 gap-3">
                                     <MetaItem label="Chunk ID" value={citation.chunk_id.slice(0, 12) + "..."} />
                                     <MetaItem label="Document ID" value={citation.document_id.slice(0, 12) + "..."} />
+                                    {citation.page_num != null && (
+                                      <MetaItem label="Page" value={`Page ${citation.page_num}`} />
+                                    )}
+                                    {citation.section && (
+                                      <MetaItem label="Section" value={citation.section} />
+                                    )}
+                                    {citation.source_type === "web_search" && (
+                                      <MetaItem label="Source" value="Live web search" />
+                                    )}
                                 </div>
                             </div>
 
@@ -368,13 +391,29 @@ function MetaItem({ label, value }: { label: string; value: string }) {
     );
 }
 
+// ── Filename formatter ────────────────────────────────────────────────────────
+
+function formatFilename(filename: string): string {
+  if (!filename.startsWith("http")) return filename;
+  try {
+    const url = new URL(filename);
+    // Show "domain.com › /path/page" — readable, not the full raw URL
+    const path = url.pathname.length > 1
+      ? url.pathname.replace(/\/$/, "").split("/").slice(-2).join(" › ")
+      : "";
+    return path ? `${url.hostname} › ${path}` : url.hostname;
+  } catch {
+    return filename;
+  }
+}
+
 // ── Audit trail ───────────────────────────────────────────────────────────────
 
 function AuditTrail({ provenance }: { provenance: ProvenanceRecord }) {
     const [expanded, setExpanded] = useState(false);
 
     return (
-        <div className="shrink-0 border-t border-glass-border pt-3">
+        <div className="shrink-0 border-t border-glass-border pt-3 pl-1">
             <button
                 onClick={() => setExpanded((v) => !v)}
                 className={clsx(

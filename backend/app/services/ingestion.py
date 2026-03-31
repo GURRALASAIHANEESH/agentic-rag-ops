@@ -37,6 +37,38 @@ _SECTION_HEADER_RE = re.compile(
 )
 
 
+# ── Document namespace classifier ───────────────────────────────────────────────────
+
+def _classify_namespace(filename: str) -> str:
+    """
+    Classifies a document into a namespace based on its filename.
+    Stored in metadata_["doc_namespace"] at chunk creation time.
+
+    Namespaces:
+        resume     — CVs, resumes, personal profiles
+        research   — academic papers, arxiv, studies
+        technical  — specs, overviews, docs, introductions
+        general    — fallback when no signal matches
+
+    Rules are evaluated in priority order — first match wins.
+    Uses lowercased filename only; no content inspection needed.
+    """
+    name = filename.lower()
+
+    _RESUME_SIGNALS    = ("resume", "cv", "_cv", "-cv", "curriculum")
+    _RESEARCH_SIGNALS  = ("paper", "arxiv", "study", "research", "survey", "thesis")
+    _TECHNICAL_SIGNALS = ("spec", "overview", "intro", "doc", "guide",
+                          "manual", "readme", "reference", "technical")
+
+    if any(s in name for s in _RESUME_SIGNALS):
+        return "resume"
+    if any(s in name for s in _RESEARCH_SIGNALS):
+        return "research"
+    if any(s in name for s in _TECHNICAL_SIGNALS):
+        return "technical"
+    return "general"
+
+
 def _split_into_sections(text: str) -> list[tuple[str, str]]:
     """
     Splits document text into (section_name, section_body) pairs.
@@ -235,6 +267,7 @@ class IngestionService:
         file_bytes: bytes,
         mime_type: str,
         user_id: uuid.UUID,
+        doc_namespace: str | None = None,      # explicit override; None = auto-classify
     ) -> int:
         """
         Ingests a document end-to-end. Returns the number of chunks created.
@@ -292,10 +325,13 @@ class IngestionService:
                 sanitized_text  = self._sanitize_text(chunk_text_val)
 
                 raw_metadata = {
-                    "page_num":     page_num,
-                    "filename":     doc.filename,
-                    "chunk_total":  len(raw_chunks),
-                    "section":      section_name,   # ← NEW: section provenance
+                    "page_num": page_num,
+                    "filename": doc.filename,
+                    "chunk_total": len(raw_chunks),
+                    "section": section_name,
+                    # Override wins over heuristic. None-check (not falsy) so that an
+                    # explicit empty string is never silently swapped for auto-classify.
+                    "doc_namespace": doc_namespace if doc_namespace is not None else _classify_namespace(doc.filename),
                 }
                 sanitized_metadata = {
                     k: self._sanitize_text(v) if isinstance(v, str) else v
@@ -341,12 +377,13 @@ class IngestionService:
                 user_id=user_id,
                 event_type="ingestion",
                 payload={
-                    "document_id":   str(document_id),
-                    "filename":      doc.filename,
+                    "document_id": str(document_id),
+                    "filename": doc.filename,
                     "chunks_created": len(chunk_objects),
-                    "page_count":    page_count,
-                    "mime_type":     mime_type,
-                    "sections":      list({s for s, _ in raw_chunks}),
+                    "page_count": page_count,
+                    "mime_type": mime_type,
+                    "sections": list({s for s, _ in raw_chunks}),
+                    "doc_namespace": doc_namespace if doc_namespace is not None else _classify_namespace(doc.filename),
                 },
             ))
             await db.commit()

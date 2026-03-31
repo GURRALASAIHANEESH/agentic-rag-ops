@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import React, { useRef, useEffect, useCallback, useId } from "react";
 import {
@@ -10,7 +10,7 @@ import { ClaimBadge, ConfidenceBadge } from "@/components/ui/Badge";
 import { SkeletonQueryResult } from "@/components/ui/Skeleton";
 import { useStreaming } from "@/hooks/useStreaming";
 import { estimateTokenCost } from "@/lib/streaming";
-import type { Citation, ClaimVerification, QuerySettings, LLMProvider } from "@/types";
+import type { Citation, ClaimVerification, QuerySettings, LLMProvider, CriticReport } from "@/types";
 
 const PROVIDERS: { value: LLMProvider; label: string }[] = [
   { value: "local", label: "Local Llama" },
@@ -30,12 +30,20 @@ interface QueryConsoleProps {
   workspaceId: string;
   initialQuery?: string;
   onCitationSelect?: (citation: Citation) => void;
+  onCitationsChange?: (citations: Citation[]) => void;
+  onCriticChange?: (critic: CriticReport | null) => void;
+  onQueryLogIdChange?: (id: string | null) => void;
+  onQueryStart?: () => void;
 }
 
 export function QueryConsole({
   workspaceId,
   initialQuery = "",
   onCitationSelect,
+  onCitationsChange,
+  onCriticChange,
+  onQueryLogIdChange,
+  onQueryStart,
 }: QueryConsoleProps) {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const answerRef = useRef<HTMLDivElement>(null);
@@ -80,6 +88,19 @@ export function QueryConsole({
     return () => window.removeEventListener("keydown", handler);
   }, []);
 
+  // Lift citations, critic, queryLogId to parent
+  useEffect(() => {
+    onCitationsChange?.(state.citations);
+  }, [state.citations, onCitationsChange]);
+
+  useEffect(() => {
+    onCriticChange?.(state.critic ?? null);
+  }, [state.critic, onCriticChange]);
+
+  useEffect(() => {
+    onQueryLogIdChange?.(state.queryLogId ?? null);
+  }, [state.queryLogId, onQueryLogIdChange]);
+
   // KEY FIX: Enter = new line only. Send button is the ONLY way to submit.
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -105,8 +126,9 @@ export function QueryConsole({
 
   const handleSubmit = useCallback(async () => {
     if (!query.trim() || state.isStreaming) return;
+    onQueryStart?.();
     await submit(query.trim());
-  }, [query, state.isStreaming, submit]);
+  }, [query, state.isStreaming, submit, onQueryStart]);
 
   const handleReset = useCallback(() => {
     reset();

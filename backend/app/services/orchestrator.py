@@ -1,4 +1,5 @@
 # backend/app/services/orchestrator.py
+import asyncio
 import json
 import time
 import uuid
@@ -16,13 +17,25 @@ from app.schemas.query import (
 )
 from app.services.llm_client import LLMClient, get_llm_client
 from app.services.retriever import RetrieverService
-from app.services.router_agent import RouterAgent, ROUTE_CLARIFY
+from app.services.router_agent import RouterAgent, ROUTE_CLARIFY, ROUTE_WEB
 from app.services.critic_agent import CriticAgent
+from app.services.web_search import WebSearchService
 from app.metrics.prometheus import (
     track_llm_call, LLM_TOKEN_COUNT, ACTIVE_QUERIES
 )
 
 logger = get_logger(__name__)
+
+WEB_SEARCH_SYSTEM_PROMPT = """You are a precise research assistant answering
+questions from live web search results.
+
+RULES:
+1. Answer using ONLY the provided web search results — never fabricate facts.
+2. Cite every fact inline using [SOURCE N] notation immediately after the claim.
+3. Each source is a web page — treat the snippet as the available context.
+4. Be concise and direct. No filler phrases.
+5. If results are insufficient, say so clearly.
+"""
 
 # ── RAG system prompt ─────────────────────────────────────────────────────────
 RAG_SYSTEM_PROMPT = """You are a precise, helpful research assistant answering
@@ -66,6 +79,7 @@ class Orchestrator:
         self._retriever = RetrieverService()
         self._router = RouterAgent(self._llm)
         self._critic = CriticAgent(self._llm)
+        self._web_search = WebSearchService()
 
     async def run_streaming(
         self,
@@ -73,14 +87,16 @@ class Orchestrator:
         user_id: uuid.UUID,
     ) -> AsyncGenerator[str, None]:
         """
-        Main streaming entry point.
-        Yields Server-Sent Events (SSE) formatted strings.
+        Streaming RAG pipeline with Phase 3D parallel rerank.
 
-        SSE format:
-          data: {"type": "token",     "data": "Hello"}\n\n
-          data: {"type": "citations", "data": [...]}\n\n
-          data: {"type": "critic",    "data": {...}}\n\n
-          data: {"type": "done",      "query_log_id": "uuid"}\n\n
+        Timeline:
+            t=0   retrieve top-20 chunks (vector search)
+            t=0   fire reranker as background task  ← Phase 3D
+            t=0   build prompt from raw chunks (stream starts immediately)
+            t=?   LLM streams tokens to client
+            t=?   reranker task completes in parallel (typically faster than LLM)
+            t=end await reranker result, use rerank-ordered citations
+            t=end yield citations (rerank-ordered) + critic + done
         """
         start_time = time.monotonic()
         ACTIVE_QUERIES.inc()
@@ -119,40 +135,106 @@ class Orchestrator:
                 ACTIVE_QUERIES.dec()
                 return
 
-            # ── Step 2: Retrieval ─────────────────────────────────────────
+            # ── Step 2: Retrieve vector search candidates (top-20) ────────
             citations, raw_chunks = await self._retriever.retrieve(
                 db=self._db,
                 query=request.query,
                 workspace_id=request.workspace_id,
                 query_log_id=query_log.id,
-                top_k=request.top_k,
+                document_ids=request.document_ids,
+                section=request.section,
+                top_k=20,
             )
 
-            if not raw_chunks:
-                no_context_msg = (
-                    "I could not find relevant information in your documents "
-                    "for this query. Please upload relevant documents first."
-                )
-                yield self._sse_event("token", no_context_msg)
-                yield self._sse_event("citations", [])
-                yield self._sse_event("done", None, query_log_id=str(query_log.id))
-                await self._db.commit()
-                ACTIVE_QUERIES.dec()
-                return
+            # ── Step 2B: Web search fallback ──────────────────────────────
+            # Triggered when: router explicitly chose "web" OR vector search
+            # returned no results (implicit fallback for knowledge-gap queries).
+            # Web results are normalized to WebResult which duck-types ChunkResult,
+            # so every downstream step (reranker, citations, critic) is unchanged.
+            use_web = (
+                route_result["route"] == ROUTE_WEB
+                or (not raw_chunks)
+            )
 
-            # ── Step 3: Build prompt ──────────────────────────────────────
-            context_block = self._retriever.build_context_block(raw_chunks)
+            if use_web:
+                logger.info(
+                    "orchestrator.web_search_triggered",
+                    reason="explicit_route" if route_result["route"] == ROUTE_WEB else "vector_empty",
+                    query_log_id=str(query_log.id),
+                )
+                web_results = await self._web_search.search(query=request.query)
+
+                if web_results:
+                    # Normalize: WebResult duck-types ChunkResult — no conversion needed
+                    raw_chunks = web_results          # type: ignore[assignment]
+                    citations = self._build_citations_from_chunks(web_results)
+
+                    # Audit: record web search was used
+                    self._db.add(AuditLog(
+                        query_log_id=query_log.id,
+                        user_id=user_id,
+                        event_type="web_search",
+                        payload={
+                            "query": request.query[:200],
+                            "results_count": len(web_results),
+                            "trigger": "explicit_route" if route_result["route"] == ROUTE_WEB else "vector_fallback",
+                            "urls": [r.metadata.get("filename", "") for r in web_results],
+                        },
+                    ))
+                else:
+                    # Web search also failed — surface honest message
+                    no_context_msg = (
+                        "I could not find relevant information in your documents "
+                        "or via web search for this query."
+                    )
+                    yield self._sse_event("token", no_context_msg)
+                    yield self._sse_event("citations", [])
+                    yield self._sse_event("done", None, query_log_id=str(query_log.id))
+                    await self._db.commit()
+                    ACTIVE_QUERIES.dec()
+                    return
+
+            # ── Step 3: Phase 3D — fire reranker as background task ───────
+            # Reranker is CPU-bound (asyncio.to_thread inside rerank()).
+            # It starts NOW and runs concurrently while LLM streams tokens.
+            # We await it only after the stream completes.
+            # Web results are already rank-ordered by DDG relevance score.
+            # Reranker expects ChunkResult objects with embeddings — WebResult
+            # has no embedding, so we skip reranking for web results entirely.
+            if use_web:
+                rerank_task = None
+            else:
+                rerank_task: asyncio.Task = asyncio.create_task(
+                    self._retriever.rerank(
+                        query=request.query,
+                        chunks=raw_chunks,
+                    ),
+                    name=f"rerank-{query_log.id}",
+                )
+            logger.info(
+                "streaming.rerank_task_started",
+                candidates=len(raw_chunks),
+                query_log_id=str(query_log.id),
+            )
+
+            # ── Step 4: Build prompt and stream LLM tokens ────────────────
+            # Intentional: don't wait for reranker here.
+            # top-5 raw (vector-order) chunks used for prompt — LLM starts immediately.
+            context_block = self._retriever.build_context_block(raw_chunks[:5])
             prompt = self._build_rag_prompt(request.query, context_block)
 
-            # ── Step 4: Stream LLM tokens ─────────────────────────────────
-            full_answer_parts = []
+            full_answer_parts: list[str] = []
             with track_llm_call(
                 provider=self._llm.provider_name,
                 model=self._llm.model_name,
             ):
+                system_prompt = (
+                    WEB_SEARCH_SYSTEM_PROMPT if use_web else RAG_SYSTEM_PROMPT
+                )
+
                 async for token in self._llm.stream(
                     prompt=prompt,
-                    system=RAG_SYSTEM_PROMPT,
+                    system=system_prompt,
                 ):
                     full_answer_parts.append(token)
                     yield self._sse_event("token", token)
@@ -166,11 +248,44 @@ class Orchestrator:
                 direction="completion",
             ).inc(estimated_tokens)
 
-            # ── Send citations to client ──────────────────────────────────
-            citations_payload = [c.model_dump(mode="json") for c in citations]
+            # ── Step 5: Await reranker — should already be done by now ────
+            # In the common case (LLM latency > reranker latency), this
+            # await returns instantly — the task finished during streaming.
+            if use_web or rerank_task is None:
+                # Web results: already ordered by DDG relevance, no reranking needed
+                final_citations = citations
+                logger.info("streaming.rerank_skipped", reason="web_results")
+            else:
+                try:
+                    reranked_chunks = await asyncio.wait_for(
+                        rerank_task,
+                        timeout=10.0,
+                    )
+                    logger.info(
+                        "streaming.rerank_complete",
+                        reranked_count=len(reranked_chunks),
+                        top_score=(
+                            reranked_chunks[0].metadata.get("rerank_score")
+                            if reranked_chunks else None
+                        ),
+                    )
+                    final_citations = self._build_citations_from_chunks(reranked_chunks)
+    
+                except asyncio.TimeoutError:
+                    logger.warning("streaming.rerank_timeout", fallback="original_vector_order")
+                    rerank_task.cancel()
+                    final_citations = citations
+    
+                except Exception as exc:
+                    logger.error("streaming.rerank_failed", error=str(exc), fallback="original_vector_order")
+                    rerank_task.cancel()
+                    final_citations = citations
+
+            # ── Send citations (rerank-ordered) to client ─────────────────
+            citations_payload = [c.model_dump(mode="json") for c in final_citations]
             yield self._sse_event("citations", citations_payload)
 
-            # ── Step 5: Critic verification ───────────────────────────────
+            # ── Step 6: Critic verification ───────────────────────────────
             critic_report = await self._critic.verify(
                 db=self._db,
                 answer=full_answer,
@@ -180,13 +295,18 @@ class Orchestrator:
             )
             yield self._sse_event("critic", critic_report.model_dump(mode="json"))
 
-            # ── Step 6: Persist final state ───────────────────────────────
+            # ── Step 7: Persist final state ───────────────────────────────
             latency_ms = int((time.monotonic() - start_time) * 1000)
-            query_log.answer_text = full_answer
-            query_log.latency_ms = latency_ms
+            query_log.answer_text  = full_answer
+            query_log.latency_ms   = latency_ms
             query_log.critic_score = critic_report.overall_score
 
-            for citation in citations:
+            for citation in final_citations:
+                # Web citations have no DB chunk record — skip FK insert to avoid
+                # IntegrityError. Web sources are recorded in the web_search audit
+                # log entry instead. Only persist citations backed by real chunks.
+                if citation.filename.startswith("http"):
+                    continue
                 self._db.add(Citation(
                     query_log_id=query_log.id,
                     chunk_id=citation.chunk_id,
@@ -229,6 +349,7 @@ class Orchestrator:
             yield self._sse_event("error", f"Pipeline error: {str(e)}")
         finally:
             ACTIVE_QUERIES.dec()
+
 
     async def run_sync(
         self,
@@ -280,7 +401,28 @@ class Orchestrator:
             created_at=datetime.now(timezone.utc),
         )
 
-    # ── Private helpers ───────────────────────────────────────────────────────
+    # ── Private helpers ─────────────────────────────────────────────────────
+
+    def _build_citations_from_chunks(self, chunks: list) -> list:
+        """
+        Rebuilds CitationSchema list from reranked chunks.
+        Filename is already in chunk.metadata['filename'] — no extra DB call needed.
+        Uses rerank_score from metadata if present, falls back to vector similarity.
+        """
+        from app.schemas.query import CitationSchema
+        return [
+            CitationSchema(
+                chunk_id=chunk.chunk_id,
+                document_id=chunk.document_id,
+                filename=chunk.metadata.get("filename", "Unknown"),
+                chunk_index=chunk.chunk_index,
+                snippet=chunk.content[:300],
+                similarity=round(
+                    chunk.metadata.get("rerank_score", chunk.similarity), 4
+                ),
+            )
+            for chunk in chunks
+        ]
 
     def _build_rag_prompt(self, query: str, context_block: str) -> str:
         """

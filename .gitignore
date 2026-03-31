@@ -56,3 +56,6 @@ backend/temp_scripts/
 
 # Ignored temporary workspace scripts
 backend/temp_scripts/
+
+backend/.cache/
+backend/.cache/**

@@ -11,22 +11,29 @@ from app.metrics.prometheus import LLM_REQUEST_COUNT
 logger = get_logger(__name__)
 
 # ── Route constants ───────────────────────────────────────────────────────────
-ROUTE_LOCAL   = "local"    # answer from vector store
-ROUTE_CLARIFY = "clarify"  # query is pure gibberish — ask user to rephrase
+ROUTE_LOCAL   = "local"       # answer from vector store
+ROUTE_WEB     = "web"         # answer from live web search
+ROUTE_CLARIFY = "clarify"     # query is pure gibberish
 
 # ── Router system prompt ──────────────────────────────────────────────────────
 ROUTER_SYSTEM_PROMPT = """You are a query router for a RAG system.
-Route queries to one of two options:
+Route queries to one of three options:
 
-1. "local" - Use for ALL real questions. Any question about a person, skills, resume,
-technology, project, or concept routes here. Short questions like "what is X",
-"what are my skills", "summarize my resume", "tell me about Y" are ALWAYS "local".
+1. "local" — Use for questions about documents, personal info, resumes, projects,
+   technical concepts, research papers, or anything likely in a private knowledge base.
+   DEFAULT choice when unsure.
 
-2. "clarify" - ONLY for pure gibberish with zero meaning (e.g. "asdf", "???").
-Extremely rare. Default to "local" when in doubt.
+2. "web" — Use ONLY for queries that explicitly need current, real-world, or
+   live information: news, today's prices, recent events, live API status,
+   "what is happening right now", "latest version of X", "current CEO of Y".
+   Use sparingly — only when local documents clearly cannot answer.
+
+3. "clarify" — ONLY for pure gibberish with zero meaning (e.g. "asdf", "???").
+   Extremely rare.
 
 Respond with JSON only. No extra text.
-{"route": "local", "reason": "Query is answerable from documents."}
+{"route": "local", "reason": "Question about documents or known concepts."}
+{"route": "web", "reason": "Requires live/current information."}
 {"route": "clarify", "reason": "Pure gibberish.", "suggestion": "Try asking: ..."}
 """
 
@@ -77,7 +84,7 @@ class RouterAgent:
             suggestion = decision.get("suggestion")
 
             # Validate — fail-open to local on unexpected route value
-            if route not in (ROUTE_LOCAL, ROUTE_CLARIFY):
+            if route not in (ROUTE_LOCAL, ROUTE_WEB, ROUTE_CLARIFY):
                 logger.warning(
                     "router_unexpected_route",
                     route=route,

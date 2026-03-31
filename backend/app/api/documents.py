@@ -4,7 +4,7 @@ from pathlib import Path
 
 from fastapi import (
     APIRouter, Depends, HTTPException,
-    UploadFile, File, BackgroundTasks, status
+    UploadFile, File, BackgroundTasks, status, Form
 )
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
@@ -29,6 +29,9 @@ logger = get_logger(__name__)
 ALLOWED_TYPES = set(get_settings().ALLOWED_MIME_TYPES.split(","))
 MAX_BYTES = get_settings().MAX_UPLOAD_SIZE_MB * 1024 * 1024
 
+# Valid namespace values — must match _classify_namespace() in ingestion.py
+VALID_NAMESPACES = {"resume", "research", "technical", "general"}
+
 
 # ── POST /api/documents/upload ────────────────────────────────────────────────
 
@@ -42,6 +45,7 @@ async def upload_document(
     workspace_id: uuid.UUID,
     background_tasks: BackgroundTasks,
     file: UploadFile = File(...),
+    doc_namespace: str | None = Form(default=None),    # optional; None = auto-classify
     payload: dict = Depends(get_current_user_payload),
     db: AsyncSession = Depends(get_db),
 ):
@@ -70,6 +74,13 @@ async def upload_document(
 
     if len(file_bytes) == 0:
         raise HTTPException(status_code=400, detail="Uploaded file is empty.")
+
+    # ── Validate namespace override (if provided) ─────────────────────────
+    if doc_namespace is not None and doc_namespace not in VALID_NAMESPACES:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=f"Invalid namespace '{doc_namespace}'. Must be one of: {sorted(VALID_NAMESPACES)}",
+        )
 
     # ── Save file to storage ──────────────────────────────────────────────
     upload_dir = Path(get_settings().UPLOAD_DIR) / str(workspace_id)
@@ -103,6 +114,7 @@ async def upload_document(
         file_bytes=file_bytes,
         mime_type=content_type,
         user_id=user_id,
+        doc_namespace=doc_namespace,           # None = auto-classify in worker
     )
 
     logger.info(
@@ -110,6 +122,7 @@ async def upload_document(
         doc_id=str(doc.id),
         filename=safe_filename,
         size_bytes=len(file_bytes),
+        doc_namespace=doc_namespace,           # None means auto-classified
     )
     return DocumentUploadResponse.model_validate(doc)
 
@@ -242,29 +255,46 @@ async def _run_ingestion(
     file_bytes: bytes,
     mime_type: str,
     user_id: uuid.UUID,
+    doc_namespace: str | None = None,
 ) -> None:
     """
-    Background task: runs the full ingestion pipeline.
-    Creates its own DB session since BackgroundTasks runs outside
-    the request lifecycle (original session is already closed).
+    Phase 3A: Dispatches ingestion to Celery worker via Redis queue.
+    Returns immediately — worker processes the file out-of-process.
+    Document status starts as 'pending'; worker updates it to 'ready'|'failed'.
     """
-    from app.core.database import get_session_factory
-    async with get_session_factory()() as db:
-        try:
-            service = IngestionService()
-            await service.ingest_document(
-                db=db,
-                document_id=document_id,
-                file_bytes=file_bytes,
-                mime_type=mime_type,
-                user_id=user_id,
-            )
-        except Exception as e:
-            logger.error(
-                "background_ingestion_failed",
-                doc_id=str(document_id),
-                error=str(e),
-            )
+    from app.workers.ingestion_worker import run_ingestion_task
+    from app.core.logging import get_logger
+
+    log = get_logger(__name__).bind(
+        document_id=str(document_id),
+        mime_type=mime_type,
+        doc_namespace=doc_namespace,
+    )
+
+    try:
+        task = run_ingestion_task.apply_async(
+            kwargs={
+                "document_id":    str(document_id),
+                "file_bytes_hex": file_bytes.hex(),   # bytes → hex for JSON safety
+                "mime_type":      mime_type,
+                "user_id":        str(user_id),
+                "doc_namespace": doc_namespace,    # ← ADD THIS LINE ONLY
+            },
+            queue="ingestion",
+        )
+        log.info(
+            "ingestion_task.dispatched",
+            celery_task_id=task.id,
+        )
+
+    except Exception as exc:
+        # Redis unavailable — log and let document stay in 'pending' state.
+        # Client polling /status will surface this as a hung 'pending'.
+        # Phase 3B monitoring will alert on this condition.
+        log.error(
+            "ingestion_task.dispatch_failed",
+            error=str(exc),
+        )
 
 
 def _status_message(status: str) -> str:

@@ -60,6 +60,7 @@ class Settings(BaseSettings):
 
     # OpenAI (only needed if LLM_PROVIDER=openai)
     OPENAI_API_KEY: str = ""
+    NOMIC_API_KEY: str = ""
     OPENAI_MODEL: str = "gpt-4o-mini"
 
     # Groq (only needed if LLM_PROVIDER=groq)
@@ -86,6 +87,9 @@ class Settings(BaseSettings):
     SUPABASE_URL: str = ""
     SUPABASE_SERVICE_KEY: str = ""
     SUPABASE_BUCKET: str = "rag-documents"
+    
+    # ── Redis ───────────────────────────────────────────────────────────
+    REDIS_URL: str = "redis://redis:6379/0"   # 'redis' matches the docker-compose service name
 
     # ── Chunking ──────────────────────────────────────────────────────────
     CHUNK_SIZE: int = 400       # tokens per chunk
@@ -94,6 +98,18 @@ class Settings(BaseSettings):
     # ── Retrieval ─────────────────────────────────────────────────────────
     RETRIEVAL_TOP_K: int = 8            # chunks to retrieve per query
     RETRIEVAL_MIN_SIMILARITY: float = 0.10  # discard below this cosine score
+
+    # ── Reranker ──────────────────────────────────────────────────────────
+    RERANKER_MODEL: str = "cross-encoder/ms-marco-MiniLM-L-6-v2"
+    RERANKER_TOP_K: int = 5
+
+    # ── Query Expansion ───────────────────────────────────────────────────
+    QUERY_EXPANSION_ENABLED: bool = True
+    QUERY_EXPANSION_VARIANTS: int = 3   # number of semantic variants to generate
+
+    # ── Document Namespaces ───────────────────────────────────────────────
+    DOC_NAMESPACE_FALLBACK_THRESHOLD: int = 2   # fall back to global if namespace returns fewer than this
+    DOC_NAMESPACES: list[str] = ["resume", "technical", "research", "general"]
 
     # ── Critic Agent ──────────────────────────────────────────────────────
     CRITIC_CONFIDENCE_THRESHOLD: float = 0.6  # below = "unverified" label
@@ -110,6 +126,12 @@ class Settings(BaseSettings):
     PROMETHEUS_ENABLED: bool = True
     LOG_LEVEL: str = "INFO"
     LOG_FORMAT: Literal["json", "text"] = "json"  # json=prod, text=dev
+
+    # Add to your existing Settings class
+    RAGAS_ENABLED: bool = True
+    RAGAS_SAMPLE_SIZE: int = 3        # number of synthetic questions generated per doc
+    RAGAS_MIN_CHUNK_WORDS: int = 30   # skip chunks shorter than this for question gen
+
 
 
 @lru_cache(maxsize=1)

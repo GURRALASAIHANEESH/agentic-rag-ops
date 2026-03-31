@@ -3,7 +3,6 @@
 
 services:
 
-  # ── PostgreSQL + pgvector ──────────────────────────────────────────────────
   postgres:
     image: pgvector/pgvector:pg16
     container_name: ragops_postgres
@@ -23,8 +22,25 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+    networks:
+      - ragops_net
 
-  # ── FastAPI Backend ────────────────────────────────────────────────────────
+  redis:
+    image: redis:7.2-alpine
+    container_name: ragops_redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: [ "CMD", "redis-cli", "ping" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - ragops_net
+
   backend:
     build:
       context: ./backend
@@ -33,35 +49,69 @@ services:
     restart: unless-stopped
     depends_on:
       postgres:
-        condition: service_healthy # waits for pg_isready before starting
+        condition: service_healthy
+      redis:
+        condition: service_healthy
     env_file:
-      - .env # loads all settings from root .env
+      - .env
     environment:
-      # Override DATABASE_URL to use Docker service name, not localhost
       DATABASE_URL: postgresql+asyncpg://ragops:ragops_pass@postgres:5432/ragops_db
+      HF_HOME: /hf_cache
+      TRANSFORMERS_CACHE: /hf_cache
     ports:
       - "8000:8000"
     volumes:
-      - ./backend:/app # live reload in development
-      - /app/__pycache__ # exclude pycache from mount
+      - ./backend:/app
+      - /app/__pycache__
+      - hf_cache:/hf_cache
     command: >
       sh -c "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload"
+    networks:
+      - ragops_net
 
-  # ── Next.js Frontend ───────────────────────────────────────────────────────
+  celery_worker:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: ragops_celery_worker
+    restart: unless-stopped
+    command: >
+      celery -A app.workers.ingestion_worker.celery_app worker --loglevel=info --concurrency=2 --queues=ingestion --hostname=worker@%h
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: postgresql+asyncpg://ragops:ragops_pass@postgres:5432/ragops_db
+      HF_HOME: /hf_cache
+      TRANSFORMERS_CACHE: /hf_cache
+    depends_on:
+      redis:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+    volumes:
+      - ./backend:/app
+      - hf_cache:/hf_cache
+    networks:
+      - ragops_net
+
   frontend:
     build:
       context: ./frontend
       dockerfile: Dockerfile
+      args:
+        INTERNAL_API_URL: http://ragops_backend:8000
     container_name: ragops_frontend
     restart: unless-stopped
     depends_on:
       - backend
     environment:
       NEXT_PUBLIC_API_URL: http://localhost:8000
+      INTERNAL_API_URL: http://ragops_backend:8000
     ports:
       - "3000:3000"
+    networks:
+      - ragops_net
 
-  # ── Prometheus ─────────────────────────────────────────────────────────────
   prometheus:
     image: prom/prometheus:v2.52.0
     container_name: ragops_prometheus
@@ -73,8 +123,9 @@ services:
     command:
       - "--config.file=/etc/prometheus/prometheus.yml"
       - "--storage.tsdb.path=/prometheus"
+    networks:
+      - ragops_net
 
-  # ── Grafana ────────────────────────────────────────────────────────────────
   grafana:
     image: grafana/grafana:10.4.2
     container_name: ragops_grafana
@@ -88,7 +139,20 @@ services:
       - grafana_data:/var/lib/grafana
     depends_on:
       - prometheus
+    networks:
+      - ragops_net
 
 volumes:
   postgres_data:
   grafana_data:
+  redis_data:
+  hf_cache:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: "D:\\hf_cache"
+
+networks:
+  ragops_net:
+    driver: bridge
